@@ -189,11 +189,11 @@ def process_excel_import(file_bytes: bytes, filename: str, db: Session) -> Impor
     existing_teams = {t.team_number for t in db.query(Team).all()}
     for t_num in range(1, 26):
         if t_num not in existing_teams:
-            db.add(Team(team_number=t_num, starting_budget=70.0))
+            db.add(Team(team_number=t_num, starting_budget=700.0))
 
     # Ensure default settings
     default_settings = {
-        "starting_budget": "70",
+        "starting_budget": "700",
         "required_gk": "1",
         "required_def": "3",
         "required_mid": "2",

@@ -61,9 +61,9 @@ export default function SquadTable({ players = [], onSetCaptain = null }) {
               <td style={{ fontFamily: 'var(--font-mono)', fontWeight: 800, color: 'var(--accent-green)' }}>
                 {p.score}
               </td>
-              <td>₹{p.base_price?.toFixed(2)} Cr</td>
+              <td>${p.base_price?.toFixed(2)}M</td>
               <td style={{ fontWeight: 700 }}>
-                {p.sold_price ? `₹${p.sold_price.toFixed(2)} Cr` : '-'}
+                {p.sold_price ? `$${p.sold_price.toFixed(2)}M` : '-'}
               </td>
               <td>
                 {onSetCaptain && (

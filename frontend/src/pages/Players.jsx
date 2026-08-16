@@ -101,7 +101,7 @@ export default function Players() {
                   <td style={{ fontFamily: 'var(--font-mono)', fontWeight: 800, color: 'var(--accent-green)' }}>
                     {p.score}
                   </td>
-                  <td>₹{p.base_price?.toFixed(2)} Cr</td>
+                  <td>${p.base_price?.toFixed(2)}M</td>
                   <td>
                     <span className={`badge ${
                       p.status === 'SOLD' ? 'badge-green' :
@@ -111,7 +111,7 @@ export default function Players() {
                     </span>
                   </td>
                   <td style={{ fontWeight: 700 }}>
-                    {p.sold_price ? `₹${p.sold_price.toFixed(2)} Cr` : '-'}
+                    {p.sold_price ? `$${p.sold_price.toFixed(2)}M` : '-'}
                   </td>
                   <td>
                     {p.team_id ? `Team ${String(teamMap[p.team_id] || p.team_id).padStart(2, '0')}` : '-'}

@@ -27,7 +27,7 @@ class Team(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     team_number = Column(Integer, unique=True, nullable=False)
-    starting_budget = Column(Float, default=70.0)
+    starting_budget = Column(Float, default=700.0)
 
     players = relationship("Player", back_populates="team")
 

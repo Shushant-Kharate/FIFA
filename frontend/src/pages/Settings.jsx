@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { api } from '../api';
 
 export default function Settings() {
-  const [startingBudget, setStartingBudget] = useState('70');
+  const [startingBudget, setStartingBudget] = useState('700');
   const [importResult, setImportResult] = useState(null);
   const [importLoading, setImportLoading] = useState(false);
   const [saveMsg, setSaveMsg] = useState(null);
@@ -167,18 +167,18 @@ export default function Settings() {
           <form onSubmit={handleSaveSettings}>
             <div style={{ marginBottom: '20px' }}>
               <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-muted)', fontWeight: 700, marginBottom: '6px' }}>
-                STARTING BUDGET PER TEAM (CR)
+                STARTING BUDGET PER TEAM ($M)
               </label>
               <input
                 type="number"
-                step="0.5"
+                step="5"
                 min="10"
                 className="input-field"
                 value={startingBudget}
                 onChange={(e) => setStartingBudget(e.target.value)}
               />
               <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                Default is ₹70.0 Cr. Updating this will adjust starting budget across all 25 teams.
+                Default is 700M. Updating this will adjust starting budget across all 25 teams.
               </span>
             </div>
 

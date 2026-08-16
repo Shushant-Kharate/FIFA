@@ -75,7 +75,7 @@ export default function Results() {
               TEAM {String(champion.team_number).padStart(2, '0')}
             </h2>
             <div style={{ color: 'var(--text-muted)', fontSize: '0.95rem', marginTop: '4px' }}>
-              Spent: ₹{champion.spent.toFixed(2)} Cr • Squad Size: {champion.players.length} Players
+              Spent: ${champion.spent.toFixed(2)}M • Squad Size: {champion.players.length} Players
               {champion.captain_name && ` • Captain: ${champion.captain_name}`}
             </div>
           </div>
@@ -101,7 +101,7 @@ export default function Results() {
               <th>TEAM</th>
               <th>QUALIFICATION</th>
               <th>FORMATION COUNTS (GK/DEF/MID/ATT)</th>
-              <th>SPENT (CR)</th>
+              <th>SPENT ($M)</th>
               <th>BASE SCORE</th>
               <th>CAPTAIN BOOST</th>
               <th>FINAL SCORE</th>
@@ -142,7 +142,7 @@ export default function Results() {
                     GK:{t.counts.GK} | DEF:{t.counts.DEF} | MID:{t.counts.MID} | ATT:{t.counts.ATT}
                   </td>
                   <td style={{ fontWeight: 700 }}>
-                    ₹{t.spent.toFixed(2)} Cr
+                    ${t.spent.toFixed(2)}M
                   </td>
                   <td>{t.base_score}</td>
                   <td style={{ color: 'var(--accent-green)', fontWeight: 700 }}>

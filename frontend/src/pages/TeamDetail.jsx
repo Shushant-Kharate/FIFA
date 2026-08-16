@@ -167,7 +167,7 @@ export default function TeamDetail() {
 
         {team.formation_at_risk && (
           <div style={{ background: 'rgba(245,158,11,0.12)', border: '1px solid var(--accent-amber)', color: 'var(--accent-amber)', padding: '10px 16px', borderRadius: '8px', fontSize: '0.88rem', fontWeight: 700, marginBottom: '16px' }}>
-            ⚠️ FORMATION AT RISK: Remaining budget (₹{team.remaining_budget.toFixed(2)} Cr) is less than estimated cost needed to purchase remaining missing slots!
+            ⚠️ FORMATION AT RISK: Remaining budget (${team.remaining_budget.toFixed(2)}M) is less than estimated cost needed to purchase remaining missing slots!
           </div>
         )}
 

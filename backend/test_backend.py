@@ -38,17 +38,17 @@ def test_auction_sell_and_budget(db_session):
     gk = db_session.query(models.Player).filter(models.Player.position == "GK", models.Player.status == "AVAILABLE").first()
     assert gk is not None
 
-    # Sell player to Team 1 for 10.0 Cr
+    # Sell player to Team 1 for 10.0 M
     state = sell_player(player_id=gk.id, team_id=1, price=10.0, db=db_session)
     assert state.spent == 10.0
-    assert state.remaining_budget == 60.0
+    assert state.remaining_budget == 690.0
     assert len(state.players) == 1
     assert state.qualified == False  # Needs 3 DEF, 2 MID, 2 ATT
 
 def test_sell_exceeding_budget(db_session):
     gk = db_session.query(models.Player).filter(models.Player.position == "GK", models.Player.status == "AVAILABLE").first()
     with pytest.raises(HTTPException) as exc:
-        sell_player(player_id=gk.id, team_id=1, price=80.0, db=db_session)
+        sell_player(player_id=gk.id, team_id=1, price=800.0, db=db_session)
     assert "remaining" in exc.value.detail
 
 def test_full_team_qualification_and_captain(db_session):

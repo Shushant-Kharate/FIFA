@@ -23,7 +23,7 @@ def sell_player(player_id: int, team_id: int, price: float, db: Session) -> Team
     if round(price, 2) > team_state.remaining_budget:
         raise HTTPException(
             status_code=400,
-            detail=f"Team {team.team_number} has only ₹{team_state.remaining_budget:.2f} Cr remaining. Cannot afford ₹{price:.2f} Cr."
+            detail=f"Team {team.team_number} has only {team_state.remaining_budget:.2f} M remaining. Cannot afford {price:.2f} M."
         )
 
     # Update player

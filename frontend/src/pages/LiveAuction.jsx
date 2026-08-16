@@ -79,7 +79,7 @@ export default function LiveAuction() {
 
       setLastAction({
         type: 'SOLD',
-        message: `✓ Sold ${selectedPlayer.name} to Team ${teamNum} for ₹${price.toFixed(2)} Cr!`,
+        message: `✓ Sold ${selectedPlayer.name} to Team ${teamNum} for $${price.toFixed(2)}M!`,
         playerId: selectedPlayer.id
       });
 
@@ -233,7 +233,7 @@ export default function LiveAuction() {
                       </span>
                     </div>
                     <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '2px' }}>
-                      P1: {p.p1} | P2: {p.p2} | P3: {p.p3} • Base: ₹{p.base_price?.toFixed(2)} Cr
+                      P1: {p.p1} | P2: {p.p2} | P3: {p.p3} • Base: ${p.base_price?.toFixed(2)}M
                     </div>
                   </div>
 
@@ -298,7 +298,7 @@ export default function LiveAuction() {
                 <div style={{ textAlign: 'center' }}>
                   <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 700 }}>BASE PRICE</div>
                   <div style={{ fontSize: '1.2rem', fontWeight: 800, color: 'var(--accent-green)' }}>
-                    ₹{selectedPlayer.base_price?.toFixed(2)} Cr
+                    ${selectedPlayer.base_price?.toFixed(2)}M
                   </div>
                 </div>
               </div>
@@ -320,7 +320,7 @@ export default function LiveAuction() {
                   >
                     {teams.map((t) => (
                       <option key={t.team_id} value={t.team_id}>
-                        Team {String(t.team_number).padStart(2, '0')} — Rem: ₹{t.remaining_budget.toFixed(2)} Cr ({t.players.length} players)
+                        Team {String(t.team_number).padStart(2, '0')} — Rem: ${t.remaining_budget.toFixed(2)}M ({t.players.length} players)
                       </option>
                     ))}
                   </select>
@@ -328,7 +328,7 @@ export default function LiveAuction() {
 
                 <div style={{ marginBottom: '18px' }}>
                   <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-muted)', fontWeight: 700, marginBottom: '6px' }}>
-                    SALE PRICE (CR)
+                    SALE PRICE ($M)
                   </label>
                   <input
                     type="number"
@@ -377,7 +377,7 @@ export default function LiveAuction() {
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(16,185,129,0.12)', padding: '12px 16px', borderRadius: '8px' }}>
                   <div>
                     <span style={{ fontSize: '0.85rem', color: 'var(--accent-green)', fontWeight: 800 }}>
-                      SOLD to Team {teams.find(t => t.team_id === selectedPlayer.team_id)?.team_number} for ₹{selectedPlayer.sold_price?.toFixed(2)} Cr
+                      SOLD to Team {teams.find(t => t.team_id === selectedPlayer.team_id)?.team_number} for ${selectedPlayer.sold_price?.toFixed(2)}M
                     </span>
                   </div>
                   <button
@@ -422,7 +422,7 @@ export default function LiveAuction() {
                   {tx.event_type}
                 </span>
                 <span>
-                  Player #{tx.player_id} {tx.team_id ? `→ Team #${tx.team_id}` : ''} {tx.amount ? `for ₹${tx.amount.toFixed(2)} Cr` : ''}
+                  Player #{tx.player_id} {tx.team_id ? `→ Team #${tx.team_id}` : ''} {tx.amount ? `for $${tx.amount.toFixed(2)}M` : ''}
                 </span>
               </div>
               <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem', fontFamily: 'var(--font-mono)' }}>

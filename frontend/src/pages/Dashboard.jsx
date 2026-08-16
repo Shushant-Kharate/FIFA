@@ -113,7 +113,7 @@ export default function Dashboard() {
         <div className="stat-box">
           <div className="stat-icon" style={{ background: 'rgba(16,185,129,0.15)', color: 'var(--accent-green)' }}>💰</div>
           <div>
-            <div className="stat-value" style={{ color: 'var(--accent-green)' }}>₹{totalSpent.toFixed(1)} Cr</div>
+            <div className="stat-value" style={{ color: 'var(--accent-green)' }}>${totalSpent.toFixed(1)}M</div>
             <div className="stat-label">Total Spent</div>
           </div>
         </div>
