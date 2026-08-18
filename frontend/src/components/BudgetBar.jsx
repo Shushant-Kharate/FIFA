@@ -15,9 +15,9 @@ export default function BudgetBar({ spent, startingBudget, remainingBudget }) {
   return (
     <div style={{ marginTop: '8px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 600 }}>
-        <span>Spent: ${spent.toFixed(2)}M</span>
+        <span>Spent: €{spent.toFixed(2)}M</span>
         <span style={{ color: remainingBudget < 50 ? 'var(--accent-red)' : 'var(--text-main)', fontWeight: 800 }}>
-          Rem: ${remainingBudget.toFixed(2)}M
+          Rem: €{remainingBudget.toFixed(2)}M
         </span>
       </div>
       <div className="budget-bar-track">

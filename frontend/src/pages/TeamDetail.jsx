@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { api } from '../api';
 import SquadTable from '../components/SquadTable';
@@ -12,7 +12,7 @@ export default function TeamDetail() {
   const [errorMsg, setErrorMsg] = useState(null);
   const [captainMsg, setCaptainMsg] = useState(null);
 
-  const loadTeam = async () => {
+  const loadTeam = useCallback(async () => {
     try {
       setLoading(true);
       const data = await api.getTeam(id);
@@ -23,11 +23,11 @@ export default function TeamDetail() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [id]);
 
   useEffect(() => {
     loadTeam();
-  }, [id]);
+  }, [loadTeam]);
 
   const handleSetCaptain = async (playerId) => {
     try {
@@ -59,6 +59,8 @@ export default function TeamDetail() {
   }
 
   const missingList = Object.entries(team.missing || {}).map(([pos, count]) => `${count} ${pos}`);
+  const nationalityGroups = Object.entries(team.nationality_bonus_breakdown || {});
+  const clubGroups = Object.entries(team.club_bonus_breakdown || {});
 
   return (
     <div>
@@ -106,7 +108,7 @@ export default function TeamDetail() {
           </div>
 
           {/* Scores Breakdown */}
-          <div style={{ display: 'flex', gap: '24px', alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: '24px', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
             <div style={{ textAlign: 'center', background: 'var(--bg-dark)', padding: '12px 20px', borderRadius: '10px' }}>
               <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 800 }}>BASE SCORE</div>
               <div style={{ fontSize: '1.8rem', fontWeight: 800 }}>{team.base_score}</div>
@@ -116,6 +118,20 @@ export default function TeamDetail() {
               <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 800 }}>CAPTAIN BOOST</div>
               <div style={{ fontSize: '1.8rem', fontWeight: 800, color: 'var(--accent-green)' }}>
                 +{team.captain_score}
+              </div>
+            </div>
+
+            <div style={{ textAlign: 'center', background: 'var(--bg-dark)', padding: '12px 20px', borderRadius: '10px' }}>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 800 }}>NATIONALITY</div>
+              <div style={{ fontSize: '1.8rem', fontWeight: 800, color: 'var(--accent-blue)' }}>
+                +{team.nationality_bonus}
+              </div>
+            </div>
+
+            <div style={{ textAlign: 'center', background: 'var(--bg-dark)', padding: '12px 20px', borderRadius: '10px' }}>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 800 }}>CLUB</div>
+              <div style={{ fontSize: '1.8rem', fontWeight: 800, color: 'var(--accent-purple)' }}>
+                +{team.club_bonus}
               </div>
             </div>
 
@@ -167,7 +183,24 @@ export default function TeamDetail() {
 
         {team.formation_at_risk && (
           <div style={{ background: 'rgba(245,158,11,0.12)', border: '1px solid var(--accent-amber)', color: 'var(--accent-amber)', padding: '10px 16px', borderRadius: '8px', fontSize: '0.88rem', fontWeight: 700, marginBottom: '16px' }}>
-            ⚠️ FORMATION AT RISK: Remaining budget (${team.remaining_budget.toFixed(2)}M) is less than estimated cost needed to purchase remaining missing slots!
+            ⚠️ FORMATION AT RISK: Remaining budget (€{team.remaining_budget.toFixed(2)}M) is less than estimated cost needed to purchase remaining missing slots!
+          </div>
+        )}
+
+        {team.qualified && (nationalityGroups.length > 0 || clubGroups.length > 0) && (
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
+            <div style={{ background: 'rgba(59,130,246,0.1)', border: '1px solid var(--accent-blue)', padding: '12px', borderRadius: '8px' }}>
+              <div style={{ fontWeight: 800, color: 'var(--accent-blue)', marginBottom: '6px' }}>🌍 Nationality Bonuses</div>
+              {nationalityGroups.length ? nationalityGroups.map(([name, bonus]) => (
+                <div key={name} style={{ fontSize: '0.85rem' }}>{name}: +{bonus}</div>
+              )) : <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>No qualifying group</div>}
+            </div>
+            <div style={{ background: 'rgba(139,92,246,0.1)', border: '1px solid var(--accent-purple)', padding: '12px', borderRadius: '8px' }}>
+              <div style={{ fontWeight: 800, color: 'var(--accent-purple)', marginBottom: '6px' }}>🏟️ Club Bonuses</div>
+              {clubGroups.length ? clubGroups.map(([name, bonus]) => (
+                <div key={name} style={{ fontSize: '0.85rem' }}>{name}: +{bonus}</div>
+              )) : <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>No qualifying group</div>}
+            </div>
           </div>
         )}
 

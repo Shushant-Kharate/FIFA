@@ -7,8 +7,6 @@ export default function PlayerSearch({
   sort, setSort 
 }) {
   const positions = ['ALL', 'GK', 'DEF', 'MID', 'ATT'];
-  const statuses = ['ALL', 'AVAILABLE', 'SOLD', 'UNSHORT']; // note: UNSOLD
-
   return (
     <div className="glass-card" style={{ marginBottom: '20px' }}>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px', alignItems: 'center' }}>

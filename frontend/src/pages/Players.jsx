@@ -40,7 +40,7 @@ export default function Players() {
       <div style={{ marginBottom: '24px' }}>
         <h1 style={{ fontSize: '2rem', fontWeight: 900, margin: 0 }}>🏃 Player Directory</h1>
         <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem' }}>
-          Inspect all 192 players, performance metrics, base values & auction status
+          Inspect all {players.length} players, performance metrics, base values & auction status
         </p>
       </div>
 
@@ -58,6 +58,8 @@ export default function Players() {
               <th>CODE</th>
               <th>NAME</th>
               <th>POSITION</th>
+              <th>NATIONALITY</th>
+              <th>CLUB</th>
               <th>P1</th>
               <th>P2</th>
               <th>P3</th>
@@ -71,13 +73,13 @@ export default function Players() {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan="11" style={{ textAlign: 'center', padding: '30px', color: 'var(--text-muted)' }}>
+                <td colSpan="13" style={{ textAlign: 'center', padding: '30px', color: 'var(--text-muted)' }}>
                   Loading players...
                 </td>
               </tr>
             ) : players.length === 0 ? (
               <tr>
-                <td colSpan="11" style={{ textAlign: 'center', padding: '30px', color: 'var(--text-muted)' }}>
+                <td colSpan="13" style={{ textAlign: 'center', padding: '30px', color: 'var(--text-muted)' }}>
                   No players match criteria.
                 </td>
               </tr>
@@ -95,13 +97,15 @@ export default function Players() {
                       {p.position}
                     </span>
                   </td>
+                  <td>{p.nationality || '-'}</td>
+                  <td style={{ maxWidth: '220px' }}>{p.club || '-'}</td>
                   <td>{p.p1}</td>
                   <td>{p.p2}</td>
                   <td>{p.p3}</td>
                   <td style={{ fontFamily: 'var(--font-mono)', fontWeight: 800, color: 'var(--accent-green)' }}>
                     {p.score}
                   </td>
-                  <td>${p.base_price?.toFixed(2)}M</td>
+                  <td>€{p.base_price?.toFixed(2)}M</td>
                   <td>
                     <span className={`badge ${
                       p.status === 'SOLD' ? 'badge-green' :
@@ -111,7 +115,7 @@ export default function Players() {
                     </span>
                   </td>
                   <td style={{ fontWeight: 700 }}>
-                    {p.sold_price ? `$${p.sold_price.toFixed(2)}M` : '-'}
+                    {p.sold_price ? `€${p.sold_price.toFixed(2)}M` : '-'}
                   </td>
                   <td>
                     {p.team_id ? `Team ${String(teamMap[p.team_id] || p.team_id).padStart(2, '0')}` : '-'}

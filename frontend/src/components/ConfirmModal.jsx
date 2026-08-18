@@ -34,7 +34,7 @@ export default function ConfirmModal({ isOpen, onClose, onConfirm, player, team,
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
             <span style={{ color: 'var(--text-muted)' }}>Sale Price:</span>
             <span style={{ fontWeight: 800, fontSize: '1.1rem', color: 'var(--accent-green)' }}>
-              ${parseFloat(price).toFixed(2)}M
+              €{parseFloat(price).toFixed(2)}M
             </span>
           </div>
 
@@ -42,13 +42,13 @@ export default function ConfirmModal({ isOpen, onClose, onConfirm, player, team,
 
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px', fontSize: '0.85rem' }}>
             <span style={{ color: 'var(--text-muted)' }}>Current Remaining Budget:</span>
-            <span>${currentBudget.toFixed(2)}M</span>
+            <span>€{currentBudget.toFixed(2)}M</span>
           </div>
 
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem', fontWeight: 800 }}>
             <span>New Remaining Budget:</span>
             <span style={{ color: newBudget < 0 ? 'var(--accent-red)' : 'var(--accent-green)' }}>
-              ${newBudget.toFixed(2)}M
+              €{newBudget.toFixed(2)}M
             </span>
           </div>
         </div>

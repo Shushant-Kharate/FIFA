@@ -80,6 +80,14 @@ export default function TeamCard({ team }) {
         </div>
       )}
 
+      {team.qualified && (
+        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '8px' }}>
+          Chemistry: <strong style={{ color: 'var(--accent-blue)' }}>+{team.nationality_bonus} nationality</strong>
+          {' • '}
+          <strong style={{ color: 'var(--accent-purple)' }}>+{team.club_bonus} club</strong>
+        </div>
+      )}
+
       {/* Budget Bar */}
       <BudgetBar 
         spent={team.spent}

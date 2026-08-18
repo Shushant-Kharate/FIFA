@@ -1,10 +1,37 @@
-const API_BASE = "http://localhost:8000/api";
+const API_BASE = import.meta.env.VITE_API_BASE || "/api";
+const SESSION_KEY = "fifa_auction_session";
+const ROOM_KEY = "fifa_auction_room";
+
+export const getSession = () => {
+  try {
+    return JSON.parse(localStorage.getItem(SESSION_KEY));
+  } catch {
+    return null;
+  }
+};
+
+export const setSession = (session) => localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+export const clearSession = () => {
+  localStorage.removeItem(SESSION_KEY);
+  localStorage.removeItem(ROOM_KEY);
+};
+export const getActiveRoom = () => Number(localStorage.getItem(ROOM_KEY) || getSession()?.user?.room_id || 1);
+export const setActiveRoom = (roomId) => localStorage.setItem(ROOM_KEY, String(roomId));
+
+function authHeaders() {
+  const session = getSession();
+  return session ? {
+    Authorization: `Bearer ${session.access_token}`,
+    "X-Room-ID": String(getActiveRoom()),
+  } : {};
+}
 
 export async function fetchApi(endpoint, options = {}) {
   const url = `${API_BASE}${endpoint}`;
   const response = await fetch(url, {
     headers: {
       "Content-Type": "application/json",
+      ...authHeaders(),
       ...options.headers,
     },
     ...options,
@@ -19,8 +46,12 @@ export async function fetchApi(endpoint, options = {}) {
           ? errorJson.detail 
           : JSON.stringify(errorJson.detail);
       }
-    } catch (e) {
+    } catch {
       // JSON parse error fallback
+    }
+    if (response.status === 401 && endpoint !== "/auth/login") {
+      clearSession();
+      window.location.reload();
     }
     throw new Error(errorDetail);
   }
@@ -29,6 +60,12 @@ export async function fetchApi(endpoint, options = {}) {
 }
 
 export const api = {
+  login: (username, password) => fetchApi("/auth/login", {
+    method: "POST",
+    body: JSON.stringify({ username, password }),
+  }),
+  getMe: () => fetchApi("/auth/me"),
+
   // Players
   getPlayers: (params = {}) => {
     const query = new URLSearchParams();
@@ -85,6 +122,7 @@ export const api = {
   importExcel: async (formData) => {
     const response = await fetch(`${API_BASE}/admin/import`, {
       method: "POST",
+      headers: authHeaders(),
       body: formData,
     });
     if (!response.ok) {
@@ -93,6 +131,18 @@ export const api = {
     }
     return response.json();
   },
-  getSampleTemplateUrl: () => `${API_BASE}/admin/sample-template`,
-  getBackupUrl: () => `${API_BASE}/admin/backup`,
+  downloadFile: async (endpoint, filename) => {
+    const response = await fetch(`${API_BASE}${endpoint}`, { headers: authHeaders() });
+    if (!response.ok) throw new Error("Download failed");
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = filename;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  },
+  downloadSampleTemplate: () => api.downloadFile("/admin/sample-template", "fifa_players.xlsx"),
+  downloadBackup: () => api.downloadFile("/admin/backup", `fifa_room_${getActiveRoom()}_backup.json`),
+  resetRoom: () => fetchApi("/admin/reset", { method: "POST" }),
 };

@@ -35,7 +35,7 @@ export default function Teams() {
         <div>
           <h1 style={{ fontSize: '2rem', fontWeight: 900, margin: 0 }}>🛡️ Teams Overview</h1>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem' }}>
-            Formation compliance, budget tracking & squad health across all 25 franchises
+            Formation compliance, budget tracking & squad health across all 20 franchises
           </p>
         </div>
 

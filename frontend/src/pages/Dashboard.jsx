@@ -48,7 +48,7 @@ export default function Dashboard() {
             Auction Control Dashboard
           </h1>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem' }}>
-            Real-time status overview of 25 competing teams & 192 players
+            Real-time status overview of 20 competing teams & {totalPlayers} players
           </p>
         </div>
 
@@ -105,7 +105,7 @@ export default function Dashboard() {
         <div className="stat-box">
           <div className="stat-icon" style={{ background: 'rgba(139,92,246,0.15)', color: 'var(--accent-purple)' }}>🏆</div>
           <div>
-            <div className="stat-value" style={{ color: 'var(--accent-purple)' }}>{qualifiedTeamsCount} / 25</div>
+            <div className="stat-value" style={{ color: 'var(--accent-purple)' }}>{qualifiedTeamsCount} / {teams.length}</div>
             <div className="stat-label">Teams Qualified</div>
           </div>
         </div>
@@ -113,15 +113,15 @@ export default function Dashboard() {
         <div className="stat-box">
           <div className="stat-icon" style={{ background: 'rgba(16,185,129,0.15)', color: 'var(--accent-green)' }}>💰</div>
           <div>
-            <div className="stat-value" style={{ color: 'var(--accent-green)' }}>${totalSpent.toFixed(1)}M</div>
+            <div className="stat-value" style={{ color: 'var(--accent-green)' }}>€{totalSpent.toFixed(1)}M</div>
             <div className="stat-label">Total Spent</div>
           </div>
         </div>
       </div>
 
-      {/* 25 Teams Grid */}
+      {/* Teams Grid */}
       <h2 style={{ fontSize: '1.3rem', fontWeight: 800, marginBottom: '16px', color: '#ffffff' }}>
-        🛡️ 25 Teams Overview
+        🛡️ 20 Teams Overview
       </h2>
 
       {loading ? (

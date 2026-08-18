@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { api } from '../api';
 import PlayerSearch from '../components/PlayerSearch';
 import ConfirmModal from '../components/ConfirmModal';
@@ -20,11 +20,9 @@ export default function LiveAuction() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [lastAction, setLastAction] = useState(null); // { message, playerId }
   const [errorMsg, setErrorMsg] = useState(null);
-  const [loading, setLoading] = useState(false);
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
-      setLoading(true);
       const [pData, tData, hData] = await Promise.all([
         api.getPlayers({ search, position, status, sort }),
         api.getTeams(),
@@ -34,24 +32,26 @@ export default function LiveAuction() {
       setTeams(tData);
       setHistory(hData);
       
-      // Auto select first player if none selected or current selection not in list
-      if (pData.length > 0 && !selectedPlayer) {
+      // Keep selection synchronized with the visible, filtered player list.
+      const selectedIsVisible = pData.some((player) => player.id === selectedPlayer?.id);
+      if (pData.length > 0 && !selectedIsVisible) {
         setSelectedPlayer(pData[0]);
         setPriceInput(pData[0].base_price ? String(pData[0].base_price) : '1.0');
+      } else if (pData.length === 0 && selectedPlayer) {
+        setSelectedPlayer(null);
+        setPriceInput('');
       }
       if (tData.length > 0 && !selectedTeamId) {
         setSelectedTeamId(String(tData[0].team_id));
       }
     } catch (err) {
       setErrorMsg(err.message);
-    } finally {
-      setLoading(false);
     }
-  };
+  }, [position, search, selectedPlayer, selectedTeamId, sort, status]);
 
   useEffect(() => {
     loadData();
-  }, [search, position, status, sort]);
+  }, [loadData]);
 
   const handleSelectPlayer = (player) => {
     setSelectedPlayer(player);
@@ -72,14 +72,14 @@ export default function LiveAuction() {
     try {
       const price = parseFloat(priceInput);
       const teamId = parseInt(selectedTeamId, 10);
-      const updatedTeam = await api.sellPlayer(selectedPlayer.id, teamId, price);
+      await api.sellPlayer(selectedPlayer.id, teamId, price);
 
       const selTeam = teams.find((t) => t.team_id === teamId);
       const teamNum = selTeam ? selTeam.team_number : teamId;
 
       setLastAction({
         type: 'SOLD',
-        message: `✓ Sold ${selectedPlayer.name} to Team ${teamNum} for $${price.toFixed(2)}M!`,
+        message: `✓ Sold ${selectedPlayer.name} to Team ${teamNum} for €${price.toFixed(2)}M!`,
         playerId: selectedPlayer.id
       });
 
@@ -97,7 +97,7 @@ export default function LiveAuction() {
       setLastAction({
         type: 'UNSOLD',
         message: `⚠️ Marked ${selectedPlayer.name} as UNSOLD`,
-        playerId: selectedPlayer.id
+        playerId: null
       });
       setSelectedPlayer(null);
       await loadData();
@@ -113,7 +113,7 @@ export default function LiveAuction() {
       setLastAction({
         type: 'RETURN',
         message: `🔄 Returned ${selectedPlayer.name} back to AVAILABLE pool`,
-        playerId: selectedPlayer.id
+        playerId: null
       });
       await loadData();
     } catch (err) {
@@ -161,7 +161,7 @@ export default function LiveAuction() {
           alignItems: 'center'
         }}>
           <span style={{ fontWeight: 800, fontSize: '1rem' }}>{lastAction.message}</span>
-          {lastAction.playerId && (
+          {lastAction.type === 'SOLD' && lastAction.playerId && (
             <button
               type="button"
               className="btn btn-secondary"
@@ -233,7 +233,7 @@ export default function LiveAuction() {
                       </span>
                     </div>
                     <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '2px' }}>
-                      P1: {p.p1} | P2: {p.p2} | P3: {p.p3} • Base: ${p.base_price?.toFixed(2)}M
+                      P1: {p.p1} | P2: {p.p2} | P3: {p.p3} • Base: €{p.base_price?.toFixed(2)}M
                     </div>
                   </div>
 
@@ -273,6 +273,9 @@ export default function LiveAuction() {
                   <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
                     Code: {selectedPlayer.player_code}
                   </span>
+                  <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginTop: '4px' }}>
+                    🌍 {selectedPlayer.nationality || 'Unknown'} • 🏟️ {selectedPlayer.club || 'Unknown club'}
+                  </div>
                 </div>
 
                 <div style={{ textAlign: 'right' }}>
@@ -298,7 +301,7 @@ export default function LiveAuction() {
                 <div style={{ textAlign: 'center' }}>
                   <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 700 }}>BASE PRICE</div>
                   <div style={{ fontSize: '1.2rem', fontWeight: 800, color: 'var(--accent-green)' }}>
-                    ${selectedPlayer.base_price?.toFixed(2)}M
+                    €{selectedPlayer.base_price?.toFixed(2)}M
                   </div>
                 </div>
               </div>
@@ -320,7 +323,7 @@ export default function LiveAuction() {
                   >
                     {teams.map((t) => (
                       <option key={t.team_id} value={t.team_id}>
-                        Team {String(t.team_number).padStart(2, '0')} — Rem: ${t.remaining_budget.toFixed(2)}M ({t.players.length} players)
+                        Team {String(t.team_number).padStart(2, '0')} — Rem: €{t.remaining_budget.toFixed(2)}M ({t.players.length} players)
                       </option>
                     ))}
                   </select>
@@ -328,7 +331,7 @@ export default function LiveAuction() {
 
                 <div style={{ marginBottom: '18px' }}>
                   <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-muted)', fontWeight: 700, marginBottom: '6px' }}>
-                    SALE PRICE ($M)
+                    SALE PRICE (€M)
                   </label>
                   <input
                     type="number"
@@ -377,7 +380,7 @@ export default function LiveAuction() {
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(16,185,129,0.12)', padding: '12px 16px', borderRadius: '8px' }}>
                   <div>
                     <span style={{ fontSize: '0.85rem', color: 'var(--accent-green)', fontWeight: 800 }}>
-                      SOLD to Team {teams.find(t => t.team_id === selectedPlayer.team_id)?.team_number} for ${selectedPlayer.sold_price?.toFixed(2)}M
+                      SOLD to Team {teams.find(t => t.team_id === selectedPlayer.team_id)?.team_number} for €{selectedPlayer.sold_price?.toFixed(2)}M
                     </span>
                   </div>
                   <button
@@ -422,7 +425,7 @@ export default function LiveAuction() {
                   {tx.event_type}
                 </span>
                 <span>
-                  Player #{tx.player_id} {tx.team_id ? `→ Team #${tx.team_id}` : ''} {tx.amount ? `for $${tx.amount.toFixed(2)}M` : ''}
+                  Player #{tx.player_id} {tx.team_id ? `→ Team #${tx.team_id}` : ''} {tx.amount ? `for €${tx.amount.toFixed(2)}M` : ''}
                 </span>
               </div>
               <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem', fontFamily: 'var(--font-mono)' }}>

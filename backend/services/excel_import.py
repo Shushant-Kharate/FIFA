@@ -1,20 +1,66 @@
 import io
+import zipfile
+from pathlib import Path
 import pandas as pd
 from typing import List, Tuple
 from sqlalchemy.orm import Session
-from models import Player, Team, Setting
+from models import Player, Team, Setting, Transaction
 from schemas import ImportResultSchema
 
-def process_excel_import(file_bytes: bytes, filename: str, db: Session) -> ImportResultSchema:
+TEAM_COUNT = 20
+MAX_EXCEL_UNCOMPRESSED_BYTES = 32 * 1024 * 1024
+
+
+def _validate_xlsx_archive(file_bytes: bytes) -> None:
+    """Reject compressed workbooks that could expand excessively in memory."""
+    try:
+        with zipfile.ZipFile(io.BytesIO(file_bytes)) as archive:
+            if len(archive.infolist()) > 1000:
+                raise ValueError("Excel workbook contains too many internal files")
+            expanded_size = sum(item.file_size for item in archive.infolist())
+            if expanded_size > MAX_EXCEL_UNCOMPRESSED_BYTES:
+                raise ValueError("Excel workbook expands beyond the 32 MB safety limit")
+    except zipfile.BadZipFile as exc:
+        raise ValueError("Invalid .xlsx workbook") from exc
+
+def process_excel_import(file_bytes: bytes, filename: str, db: Session, room_id: int) -> ImportResultSchema:
     errors: List[str] = []
+    filename_lower = filename.lower()
 
     try:
-        if filename.endswith(".csv"):
+        if filename_lower.endswith(".csv"):
             df = pd.read_csv(io.BytesIO(file_bytes))
         else:
+            if filename_lower.endswith(".xlsx"):
+                _validate_xlsx_archive(file_bytes)
             xl = pd.ExcelFile(io.BytesIO(file_bytes))
-            # Read first sheet
-            df = pd.read_excel(xl, sheet_name=xl.sheet_names[0])
+            sheets = []
+            for sheet_name in xl.sheet_names:
+                sheet_df = pd.read_excel(xl, sheet_name=sheet_name)
+                sheet_df = sheet_df.dropna(how="all")
+                if not sheet_df.empty:
+                    if len(sheet_df.columns) >= 6:
+                        canonical = [
+                            "player_code", "name", "position", "p1", "p2", "p3",
+                            "total", "base_price", "national", "club"
+                        ]
+                        sheet_df = sheet_df.iloc[:, :len(canonical)]
+                        sheet_df.columns = canonical[:len(sheet_df.columns)]
+                        sheet_df = sheet_df.dropna(
+                            subset=["name", "position", "p1", "p2", "p3"],
+                            how="all"
+                        )
+                    sheets.append(sheet_df)
+
+            if not sheets:
+                raise ValueError("Workbook does not contain any player rows")
+
+            # Multi-sheet auction workbooks restart their serial number on each
+            # position sheet. Generate one global sequence so player codes stay
+            # unique after the sheets are combined.
+            df = pd.concat(sheets, ignore_index=True)
+            if len(sheets) > 1:
+                df.iloc[:, 0] = range(1, len(df) + 1)
     except Exception as e:
         return ImportResultSchema(
             success=False,
@@ -35,30 +81,37 @@ def process_excel_import(file_bytes: bytes, filename: str, db: Session) -> Impor
             col_map[col] = "name"
         elif c_clean in ["position", "pos"]:
             col_map[col] = "position"
-        elif c_clean in ["p1", "diving", "tackling", "passing", "finishing", "param1", "p1_rating"]:
+        elif c_clean in ["p1", "param1", "p1_rating"]:
             col_map[col] = "p1"
-        elif c_clean in ["p2", "handling", "interceptions", "dribbling", "pace", "param2", "p2_rating"]:
+        elif c_clean in ["p2", "param2", "p2_rating"]:
             col_map[col] = "p2"
-        elif c_clean in ["p3", "kicking", "aerial", "stamina", "shooting", "param3", "p3_rating"]:
+        elif c_clean in ["p3", "param3", "p3_rating"]:
             col_map[col] = "p3"
         elif c_clean in ["base_price", "baseprice", "base_price_cr", "price"]:
             col_map[col] = "base_price"
+        elif c_clean in ["national", "nationality", "country"]:
+            col_map[col] = "nationality"
+        elif c_clean in ["club", "clubs", "team"]:
+            col_map[col] = "club"
 
     df = df.rename(columns=col_map)
 
-    # Positional column fallback for P1, P2, P3 if headers were not explicitly matched
+    # Positional column fallback for P1, P2, P3. Position-specific sheets use
+    # different rating names (e.g. Handling/Diving/Kicking or
+    # Pace/Defense/Physical), but the three rating columns are always D:F.
     if "player_code" not in df.columns and len(cols_orig) > 0:
         df = df.rename(columns={cols_orig[0]: "player_code"})
     if "name" not in df.columns and len(cols_orig) > 1:
         df = df.rename(columns={cols_orig[1]: "name"})
     if "position" not in df.columns and len(cols_orig) > 2:
         df = df.rename(columns={cols_orig[2]: "position"})
-    if "p1" not in df.columns and len(cols_orig) > 3:
-        df = df.rename(columns={cols_orig[3]: "p1"})
-    if "p2" not in df.columns and len(cols_orig) > 4:
-        df = df.rename(columns={cols_orig[4]: "p2"})
-    if "p3" not in df.columns and len(cols_orig) > 5:
-        df = df.rename(columns={cols_orig[5]: "p3"})
+    rating_columns = list(df.columns[3:6])
+    if not all(col in df.columns for col in ["p1", "p2", "p3"]) and len(rating_columns) == 3:
+        df = df.rename(columns={
+            rating_columns[0]: "p1",
+            rating_columns[1]: "p2",
+            rating_columns[2]: "p3"
+        })
 
     required_cols = ["player_code", "name", "position", "p1", "p2", "p3"]
     missing_cols = [c for c in required_cols if c not in df.columns]
@@ -74,6 +127,7 @@ def process_excel_import(file_bytes: bytes, filename: str, db: Session) -> Impor
     valid_rows = []
 
     for idx, row in df.iterrows():
+        errors_before_row = len(errors)
         row_num = idx + 2  # 1-indexed header + row offset
         code_raw = str(row["player_code"]).strip() if pd.notna(row["player_code"]) else ""
         
@@ -138,7 +192,15 @@ def process_excel_import(file_bytes: bytes, filename: str, db: Session) -> Impor
             except (ValueError, TypeError):
                 base_price = 1.0
 
-        if len(errors) == 0:
+        nationality = None
+        if "nationality" in df.columns and pd.notna(row["nationality"]):
+            nationality = str(row["nationality"]).strip().upper() or None
+
+        club = None
+        if "club" in df.columns and pd.notna(row["club"]):
+            club = str(row["club"]).strip() or None
+
+        if len(errors) == errors_before_row:
             score = p1 + p2 + p3
             valid_rows.append({
                 "player_code": code,
@@ -148,7 +210,9 @@ def process_excel_import(file_bytes: bytes, filename: str, db: Session) -> Impor
                 "p2": p2,
                 "p3": p3,
                 "score": score,
-                "base_price": round(base_price, 2)
+                "base_price": round(base_price, 2),
+                "nationality": nationality,
+                "club": club
             })
 
     if errors:
@@ -159,12 +223,23 @@ def process_excel_import(file_bytes: bytes, filename: str, db: Session) -> Impor
             errors=errors
         )
 
-    # Database updates
-    db.query(Player).delete()
+    if not valid_rows:
+        return ImportResultSchema(
+            success=False,
+            message="The dataset contains no valid player rows. No records inserted.",
+            player_count=0, gk_count=0, def_count=0, mid_count=0, att_count=0,
+            errors=["At least one valid player row is required"]
+        )
+
+    # Database updates are committed together; validation failures above never
+    # modify the current room's dataset or auction activity.
+    db.query(Transaction).filter(Transaction.room_id == room_id).delete(synchronize_session=False)
+    db.query(Player).filter(Player.room_id == room_id).delete(synchronize_session=False)
 
     gk_c, def_c, mid_c, att_c = 0, 0, 0, 0
     for r in valid_rows:
         player = Player(
+            room_id=room_id,
             player_code=r["player_code"],
             name=r["name"],
             position=r["position"],
@@ -173,6 +248,8 @@ def process_excel_import(file_bytes: bytes, filename: str, db: Session) -> Impor
             p3=r["p3"],
             score=r["score"],
             base_price=r["base_price"],
+            nationality=r["nationality"],
+            club=r["club"],
             status="AVAILABLE",
             team_id=None,
             sold_price=None,
@@ -185,11 +262,26 @@ def process_excel_import(file_bytes: bytes, filename: str, db: Session) -> Impor
         elif pos == "MID": mid_c += 1
         elif pos == "ATT": att_c += 1
 
-    # Ensure Teams 1..25 exist
-    existing_teams = {t.team_number for t in db.query(Team).all()}
-    for t_num in range(1, 26):
+    # Keep the configured set of auction teams exactly in sync.
+    surplus_team_ids = [
+        t.id for t in db.query(Team).filter(
+            Team.room_id == room_id, Team.team_number > TEAM_COUNT
+        ).all()
+    ]
+    if surplus_team_ids:
+        db.query(Transaction).filter(Transaction.team_id.in_(surplus_team_ids)).delete(
+            synchronize_session=False
+        )
+        db.query(Team).filter(Team.id.in_(surplus_team_ids)).delete(
+            synchronize_session=False
+        )
+
+    existing_teams = {
+        t.team_number for t in db.query(Team).filter(Team.room_id == room_id).all()
+    }
+    for t_num in range(1, TEAM_COUNT + 1):
         if t_num not in existing_teams:
-            db.add(Team(team_number=t_num, starting_budget=700.0))
+            db.add(Team(room_id=room_id, team_number=t_num, starting_budget=700.0))
 
     # Ensure default settings
     default_settings = {
@@ -201,8 +293,8 @@ def process_excel_import(file_bytes: bytes, filename: str, db: Session) -> Impor
         "auction_status": "ACTIVE"
     }
     for k, v in default_settings.items():
-        if not db.query(Setting).filter(Setting.key == k).first():
-            db.add(Setting(key=k, value=v))
+        if not db.query(Setting).filter(Setting.room_id == room_id, Setting.key == k).first():
+            db.add(Setting(room_id=room_id, key=k, value=v))
 
     db.commit()
 
@@ -220,28 +312,24 @@ def process_excel_import(file_bytes: bytes, filename: str, db: Session) -> Impor
 def generate_sample_excel() -> bytes:
     """Generates sample template if needed."""
     # Use real file if present, else template
-    import os
-    real_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "FIFA AUCTION 2026.xlsx")
-    if os.path.exists(real_path):
-        with open(real_path, "rb") as f:
-            return f.read()
-    import random
-    first_names = ["Kylian", "Lionel", "Cristiano", "Erling", "Kevin", "Jude", "Mohamed", "Harry", "Vinicius", "Rodri"]
-    last_names = ["Mbappe", "Messi", "Ronaldo", "Haaland", "De Bruyne", "Bellingham", "Salah", "Kane", "Junior", "Hernandez"]
-    positions = ["GK"] * 32 + ["DEF"] * 64 + ["MID"] * 56 + ["ATT"] * 40
-    data = []
-    for idx, pos in enumerate(positions, start=1):
-        data.append({
-            "SR. NO.": idx,
-            "NAME": f"{random.choice(first_names)} {random.choice(last_names)}",
-            "POSITION": pos,
-            "DIVING": 80,
-            "HANDLING": 82,
-            "KICKING": 84,
-            "TOTAL": 246
-        })
-    df = pd.DataFrame(data)
+    real_path = Path(__file__).resolve().parents[1] / "FIFA AUCTION 2026.xlsx"
+    if real_path.is_file():
+        return real_path.read_bytes()
+
+    # A deterministic structural template is useful for recovery without ever
+    # pretending randomly generated players are the production dataset.
+    df = pd.DataFrame([{
+        "SR. NO.": 1,
+        "NAME": "Example Player",
+        "POSITION": "GK",
+        "P1": 80,
+        "P2": 82,
+        "P3": 84,
+        "BASE PRICE": 1,
+        "NATIONALITY": "Example Country",
+        "CLUB": "Example Club",
+    }])
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine="openpyxl") as writer:
-        df.to_excel(writer, index=False, sheet_name="GK")
+        df.to_excel(writer, index=False, sheet_name="Players")
     return output.getvalue()

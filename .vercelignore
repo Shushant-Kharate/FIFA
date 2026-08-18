@@ -1,0 +1,13 @@
+.git/
+.runlogs/
+.tmp-prod-sim/
+.pytest_cache/
+backend/.env
+backend/.pytest_cache/
+backend/.venv/
+backend/*.db
+backend/__pycache__/
+backend/routers/__pycache__/
+backend/services/__pycache__/
+frontend/dist/
+frontend/node_modules/

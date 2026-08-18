@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from database import get_db
 from models import Player
 from schemas import PlayerSchema
+from auth import get_active_room_id
 
 router = APIRouter(prefix="/api/players", tags=["Players"])
 
@@ -13,9 +14,10 @@ def get_players(
     position: Optional[str] = Query(None, description="Filter by position (GK, DEF, MID, ATT)"),
     status: Optional[str] = Query(None, description="Filter by status (AVAILABLE, SOLD, UNSOLD)"),
     sort: Optional[str] = Query("code_asc", description="Sort by score_desc, score_asc, price_desc, price_asc, name_asc, code_asc"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    room_id: int = Depends(get_active_room_id)
 ):
-    query = db.query(Player)
+    query = db.query(Player).filter(Player.room_id == room_id)
 
     if search:
         term = f"%{search.strip()}%"
@@ -44,8 +46,8 @@ def get_players(
     return [PlayerSchema.model_validate(p) for p in players]
 
 @router.get("/{player_id}", response_model=PlayerSchema)
-def get_player(player_id: int, db: Session = Depends(get_db)):
-    player = db.query(Player).filter(Player.id == player_id).first()
+def get_player(player_id: int, db: Session = Depends(get_db), room_id: int = Depends(get_active_room_id)):
+    player = db.query(Player).filter(Player.id == player_id, Player.room_id == room_id).first()
     if not player:
         raise HTTPException(status_code=404, detail="Player not found")
     return PlayerSchema.model_validate(player)

@@ -14,6 +14,8 @@ class PlayerSchema(BaseModel):
     p3: int
     score: int
     base_price: float
+    nationality: Optional[str] = None
+    club: Optional[str] = None
     status: str
     team_id: Optional[int] = None
     sold_price: Optional[float] = None
@@ -24,6 +26,7 @@ class PlayerInTeamSchema(PlayerSchema):
     is_best_8: bool = False
 
 class TeamStateSchema(BaseModel):
+    room_id: int
     team_id: int
     team_number: int
     starting_budget: float
@@ -36,10 +39,14 @@ class TeamStateSchema(BaseModel):
     captain_id: Optional[int] = None
     captain_name: Optional[str] = None
     captain_score: int = 0
+    nationality_bonus: int = 0
+    club_bonus: int = 0
+    nationality_bonus_breakdown: Dict[str, int] = Field(default_factory=dict)
+    club_bonus_breakdown: Dict[str, int] = Field(default_factory=dict)
     final_score: int
     formation_at_risk: bool = False
-    players: List[PlayerInTeamSchema] = []
-    best_8_ids: List[int] = []
+    players: List[PlayerInTeamSchema] = Field(default_factory=list)
+    best_8_ids: List[int] = Field(default_factory=list)
 
 class TeamSummarySchema(BaseModel):
     team_id: int
@@ -96,5 +103,21 @@ class ImportResultSchema(BaseModel):
     def_count: int
     mid_count: int
     att_count: int
-    errors: List[str] = []
+    errors: List[str] = Field(default_factory=list)
 
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+class AuthUserSchema(BaseModel):
+    username: str
+    role: str
+    room_id: Optional[int] = None
+
+
+class LoginResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    user: AuthUserSchema

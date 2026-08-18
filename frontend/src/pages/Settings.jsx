@@ -1,12 +1,25 @@
 import React, { useState, useEffect } from 'react';
-import { api } from '../api';
+import { api, getActiveRoom, getSession } from '../api';
 
 export default function Settings() {
+  const isSuperAdmin = getSession()?.user?.role === 'SUPER_ADMIN';
+  const activeRoom = getActiveRoom();
   const [startingBudget, setStartingBudget] = useState('700');
   const [importResult, setImportResult] = useState(null);
   const [importLoading, setImportLoading] = useState(false);
   const [saveMsg, setSaveMsg] = useState(null);
   const [errorMsg, setErrorMsg] = useState(null);
+
+  const handleResetRoom = async () => {
+    if (!window.confirm(`Reset all auction activity in Room ${activeRoom}? This cannot be undone.`)) return;
+    try {
+      await api.resetRoom();
+      setSaveMsg(`✓ Room ${activeRoom} auction reset successfully.`);
+      setErrorMsg(null);
+    } catch (err) {
+      setErrorMsg(err.message);
+    }
+  };
 
   useEffect(() => {
     const loadSettings = async () => {
@@ -33,6 +46,7 @@ export default function Settings() {
   };
 
   const handleFileUpload = async (e) => {
+    if (!isSuperAdmin) return;
     const file = e.target.files[0];
     if (!file) return;
 
@@ -74,14 +88,16 @@ export default function Settings() {
         </div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
+      <div className="settings-grid">
         {/* Left Column: Excel Import & Backup */}
         <div className="glass-card">
           <h2 style={{ fontSize: '1.25rem', fontWeight: 800, marginBottom: '14px', color: '#ffffff' }}>
             📊 Excel Data Management
           </h2>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.88rem', marginBottom: '20px' }}>
-            Upload your player list Excel file (.xlsx or .csv). Headers must include: <code>player_code</code>, <code>name</code>, <code>position</code>, <code>p1</code>, <code>p2</code>, <code>p3</code>, <code>base_price</code>.
+            {isSuperAdmin
+              ? `Upload a player dataset specifically to Room ${activeRoom}. Imports never affect the other room.`
+              : 'Dataset imports are restricted to the super admin. Room backups remain available below.'}
           </p>
 
           {/* Upload Box */}
@@ -107,31 +123,21 @@ export default function Settings() {
               style={{ display: 'none' }}
               id="excel-file-input"
               onChange={handleFileUpload}
-              disabled={importLoading}
+              disabled={importLoading || !isSuperAdmin}
             />
-            <label htmlFor="excel-file-input" className="btn btn-primary" style={{ cursor: 'pointer' }}>
-              Upload Excel File
+            <label htmlFor="excel-file-input" className={`btn ${isSuperAdmin ? 'btn-primary' : 'btn-secondary'}`} style={{ cursor: isSuperAdmin ? 'pointer' : 'not-allowed' }}>
+              {isSuperAdmin ? `Upload to Room ${activeRoom}` : 'Super Admin Only'}
             </label>
           </div>
 
           {/* Download Sample & Export Backup buttons */}
-          <div style={{ display: 'flex', gap: '12px' }}>
-            <a
-              href={api.getSampleTemplateUrl()}
-              className="btn btn-secondary"
-              style={{ flex: 1, textDecoration: 'none' }}
-              download
-            >
-              📥 Download Sample Template (192 Players)
-            </a>
-            <a
-              href={api.getBackupUrl()}
-              className="btn btn-secondary"
-              style={{ flex: 1, textDecoration: 'none' }}
-              download
-            >
-              💾 Export DB Backup (JSON)
-            </a>
+          <div className="settings-actions">
+            <button type="button" className="btn btn-secondary" style={{ flex: 1 }} onClick={() => api.downloadSampleTemplate().catch((err) => setErrorMsg(err.message))}>
+              📥 Download Import Template
+            </button>
+            <button type="button" className="btn btn-secondary" style={{ flex: 1 }} onClick={() => api.downloadBackup().catch((err) => setErrorMsg(err.message))}>
+              💾 Export Room {activeRoom} Backup
+            </button>
           </div>
 
           {/* Import Result Feedback */}
@@ -142,7 +148,7 @@ export default function Settings() {
               </h4>
               {importResult.success ? (
                 <div style={{ fontSize: '0.88rem' }}>
-                  Loaded: {importResult.player_count} players (GK: {importResult.gk_count}, DEF: {importResult.def_count}, MID: {importResult.mid_count}, ATT: {importResult.att_count}) across 25 teams.
+                  Loaded: {importResult.player_count} players (GK: {importResult.gk_count}, DEF: {importResult.def_count}, MID: {importResult.mid_count}, ATT: {importResult.att_count}) across 20 teams.
                 </div>
               ) : (
                 <div style={{ fontSize: '0.82rem', maxHeight: '200px', overflowY: 'auto', background: 'var(--bg-dark)', padding: '10px', borderRadius: '6px' }}>
@@ -167,7 +173,7 @@ export default function Settings() {
           <form onSubmit={handleSaveSettings}>
             <div style={{ marginBottom: '20px' }}>
               <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-muted)', fontWeight: 700, marginBottom: '6px' }}>
-                STARTING BUDGET PER TEAM ($M)
+                STARTING BUDGET PER TEAM (€M)
               </label>
               <input
                 type="number"
@@ -178,7 +184,7 @@ export default function Settings() {
                 onChange={(e) => setStartingBudget(e.target.value)}
               />
               <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                Default is 700M. Updating this will adjust starting budget across all 25 teams.
+                Default is 700M. Updating this will adjust starting budget across all 20 teams.
               </span>
             </div>
 
@@ -186,6 +192,14 @@ export default function Settings() {
               Save Configuration
             </button>
           </form>
+
+          <hr style={{ borderColor: 'var(--border-color)', margin: '20px 0' }} />
+
+          <h3 style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--accent-red)', marginBottom: '8px' }}>Danger Zone — Room {activeRoom}</h3>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '10px' }}>
+            Reset sales, captains, unsold statuses, and transaction history in this room only.
+          </p>
+          <button type="button" className="btn btn-danger" onClick={handleResetRoom}>Reset Room {activeRoom} Auction</button>
 
           <hr style={{ borderColor: 'var(--border-color)', margin: '20px 0' }} />
 

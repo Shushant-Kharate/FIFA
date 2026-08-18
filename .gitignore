@@ -22,6 +22,12 @@ dist/
 
 # Build artifacts
 *.log
+.tmp-prod-sim/
+
+# Secrets (the example file is intentionally committed)
+.env
+.env.*
+!.env.example
 
 # OS
 .DS_Store
@@ -30,3 +36,6 @@ Thumbs.db
 # IDE
 .vscode/
 .idea/
+
+.vercel
+.env*

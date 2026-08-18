@@ -25,7 +25,7 @@ export default function Results() {
     ? leaderboard.filter(t => t.qualified)
     : leaderboard;
 
-  const champion = leaderboard.find(t => t.qualified) || leaderboard[0];
+  const leader = leaderboard[0];
 
   return (
     <div>
@@ -53,7 +53,7 @@ export default function Results() {
       </div>
 
       {/* Champion Spotlight Banner */}
-      {champion && (
+      {leader && (
         <div style={{
           background: 'linear-gradient(135deg, rgba(16,185,129,0.25), rgba(14,15,18,0.95))',
           border: '2px solid var(--accent-green)',
@@ -69,24 +69,24 @@ export default function Results() {
         }}>
           <div>
             <span className="badge badge-green" style={{ fontSize: '0.85rem', padding: '6px 12px', marginBottom: '8px' }}>
-              👑 CURRENT LEADER / CHAMPION
+              {leader.qualified ? '👑 CURRENT LEADER / CHAMPION' : '📈 CURRENT HIGHEST SCORE'}
             </span>
             <h2 style={{ fontSize: '2.5rem', fontWeight: 900, margin: '4px 0 0 0', color: '#ffffff' }}>
-              TEAM {String(champion.team_number).padStart(2, '0')}
+              TEAM {String(leader.team_number).padStart(2, '0')}
             </h2>
             <div style={{ color: 'var(--text-muted)', fontSize: '0.95rem', marginTop: '4px' }}>
-              Spent: ${champion.spent.toFixed(2)}M • Squad Size: {champion.players.length} Players
-              {champion.captain_name && ` • Captain: ${champion.captain_name}`}
+              Spent: €{leader.spent.toFixed(2)}M • Squad Size: {leader.players.length} Players
+              {leader.captain_name && ` • Captain: ${leader.captain_name}`}
             </div>
           </div>
 
           <div style={{ textAlign: 'right' }}>
             <span style={{ fontSize: '0.8rem', color: 'var(--accent-green)', fontWeight: 800 }}>CHAMPIONSHIP SCORE</span>
             <div style={{ fontSize: '3.2rem', fontWeight: 900, fontFamily: 'var(--font-mono)', color: 'var(--accent-green)', lineHeight: 1 }}>
-              {champion.final_score}
+              {leader.final_score}
             </div>
             <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-              Base: {champion.base_score} + Captain: {champion.captain_score}
+              Base: {leader.base_score} + Captain: {leader.captain_score} + Nationality: {leader.nationality_bonus} + Club: {leader.club_bonus}
             </div>
           </div>
         </div>
@@ -101,22 +101,24 @@ export default function Results() {
               <th>TEAM</th>
               <th>QUALIFICATION</th>
               <th>FORMATION COUNTS (GK/DEF/MID/ATT)</th>
-              <th>SPENT ($M)</th>
+              <th>SPENT (€M)</th>
               <th>BASE SCORE</th>
               <th>CAPTAIN BOOST</th>
+              <th>NATIONALITY</th>
+              <th>CLUB</th>
               <th>FINAL SCORE</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan="8" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
+                <td colSpan="10" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
                   Calculating rankings...
                 </td>
               </tr>
             ) : displayList.length === 0 ? (
               <tr>
-                <td colSpan="8" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
+                <td colSpan="10" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
                   No teams found.
                 </td>
               </tr>
@@ -142,12 +144,14 @@ export default function Results() {
                     GK:{t.counts.GK} | DEF:{t.counts.DEF} | MID:{t.counts.MID} | ATT:{t.counts.ATT}
                   </td>
                   <td style={{ fontWeight: 700 }}>
-                    ${t.spent.toFixed(2)}M
+                    €{t.spent.toFixed(2)}M
                   </td>
                   <td>{t.base_score}</td>
                   <td style={{ color: 'var(--accent-green)', fontWeight: 700 }}>
                     +{t.captain_score}
                   </td>
+                  <td style={{ color: 'var(--accent-blue)', fontWeight: 700 }}>+{t.nationality_bonus}</td>
+                  <td style={{ color: 'var(--accent-purple)', fontWeight: 700 }}>+{t.club_bonus}</td>
                   <td style={{ fontFamily: 'var(--font-mono)', fontWeight: 900, fontSize: '1.4rem', color: 'var(--accent-green)' }}>
                     {t.final_score}
                   </td>
