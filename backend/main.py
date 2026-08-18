@@ -25,12 +25,39 @@ def initialize_database() -> None:
     validate_production_environment()
     connection = engine.connect()
     is_postgres = engine.dialect.name == "postgresql"
+    lock_acquired = False
     db = None
     try:
         if is_postgres:
+            tables_ready = connection.execute(
+                text(
+                    "SELECT to_regclass('public.rooms') IS NOT NULL "
+                    "AND to_regclass('public.teams') IS NOT NULL "
+                    "AND to_regclass('public.players') IS NOT NULL"
+                )
+            ).scalar()
+            if tables_ready:
+                room_count, team_count, room1_players, room2_players = connection.execute(
+                    text(
+                        "SELECT "
+                        "(SELECT COUNT(*) FROM rooms), "
+                        "(SELECT COUNT(*) FROM teams), "
+                        "(SELECT COUNT(*) FROM players WHERE room_id = 1), "
+                        "(SELECT COUNT(*) FROM players WHERE room_id = 2)"
+                    )
+                ).one()
+                if (
+                    room_count >= 2
+                    and team_count >= 40
+                    and room1_players > 0
+                    and room2_players > 0
+                ):
+                    return
+
             connection.execute(
                 text("SELECT pg_advisory_lock(:lock_id)"), {"lock_id": BOOTSTRAP_LOCK_ID}
             )
+            lock_acquired = True
 
         Base.metadata.create_all(bind=connection)
         db = SessionLocal(bind=connection)
@@ -67,7 +94,7 @@ def initialize_database() -> None:
     finally:
         if db is not None:
             db.close()
-        if is_postgres:
+        if lock_acquired:
             connection.execute(
                 text("SELECT pg_advisory_unlock(:lock_id)"), {"lock_id": BOOTSTRAP_LOCK_ID}
             )
@@ -135,5 +162,17 @@ if FRONTEND_DIST.is_dir():
             requested_file = dist_root / "index.html"
 
         if requested_path and requested_file.is_file():
-            return FileResponse(requested_file)
-        return FileResponse(dist_root / "index.html")
+            return FileResponse(
+                requested_file,
+                headers={
+                    "Cache-Control": "public, max-age=31536000, immutable",
+                    "CDN-Cache-Control": "public, s-maxage=31536000, immutable",
+                },
+            )
+        return FileResponse(
+            dist_root / "index.html",
+            headers={
+                "Cache-Control": "no-cache",
+                "CDN-Cache-Control": "public, s-maxage=60, stale-while-revalidate=86400",
+            },
+        )

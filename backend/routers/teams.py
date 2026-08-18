@@ -2,9 +2,8 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from database import get_db
-from models import Team
 from schemas import TeamStateSchema, SetCaptainRequest
-from services.scoring import get_team_state
+from services.scoring import get_all_team_states, get_team_state
 from services.auction_service import set_captain
 from auth import get_active_room_id
 
@@ -12,8 +11,7 @@ router = APIRouter(prefix="/api/teams", tags=["Teams"])
 
 @router.get("", response_model=List[TeamStateSchema])
 def get_all_teams(db: Session = Depends(get_db), room_id: int = Depends(get_active_room_id)):
-    teams = db.query(Team).filter(Team.room_id == room_id).order_by(Team.team_number.asc()).all()
-    return [get_team_state(t.id, db, room_id) for t in teams]
+    return get_all_team_states(db, room_id)
 
 @router.get("/{team_id}", response_model=TeamStateSchema)
 def get_single_team(team_id: int, db: Session = Depends(get_db), room_id: int = Depends(get_active_room_id)):

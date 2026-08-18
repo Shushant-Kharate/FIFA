@@ -56,9 +56,8 @@ def calculate_chemistry_bonuses(players: List[Player]) -> Tuple[int, int, Dict[s
         club_breakdown,
     )
 
-def get_required_positions(db: Session, room_id: int) -> Dict[str, int]:
+def _requirements_from_settings(settings: List[Setting]) -> Dict[str, int]:
     requirements = dict(DEFAULT_REQUIREMENTS)
-    settings = db.query(Setting).filter(Setting.room_id == room_id).all()
     setting_dict = {s.key: s.value for s in settings}
 
     for setting_key, position in (
@@ -77,22 +76,30 @@ def get_required_positions(db: Session, room_id: int) -> Dict[str, int]:
 
     return requirements
 
-def get_team_state(team_id: int, db: Session, room_id: int = None) -> TeamStateSchema:
-    query = db.query(Team).filter(Team.id == team_id)
-    if room_id is not None:
-        query = query.filter(Team.room_id == room_id)
-    team = query.first()
-    if not team:
-        raise ValueError(f"Team with id {team_id} not found")
+def get_required_positions(db: Session, room_id: int) -> Dict[str, int]:
+    settings = db.query(Setting).filter(Setting.room_id == room_id).all()
+    return _requirements_from_settings(settings)
 
+
+def _available_prices_by_position(rows) -> Dict[str, List[float]]:
+    prices: Dict[str, List[float]] = {"GK": [], "DEF": [], "MID": [], "ATT": []}
+    for position, base_price in rows:
+        prices.setdefault(position.upper(), []).append(float(base_price))
+    for position_prices in prices.values():
+        position_prices.sort()
+    return prices
+
+
+def _build_team_state(
+    team: Team,
+    players: List[Player],
+    required: Dict[str, int],
+    available_prices: Dict[str, List[float]],
+) -> TeamStateSchema:
     room_id = team.room_id
-    players = db.query(Player).filter(
-        Player.room_id == room_id, Player.team_id == team_id, Player.status == "SOLD"
-    ).all()
+    team_id = team.id
     spent = round(sum((p.sold_price or 0.0) for p in players), 2)
     remaining_budget = round(team.starting_budget - spent, 2)
-
-    required = get_required_positions(db, room_id)
 
     by_pos: Dict[str, List[Player]] = {"GK": [], "DEF": [], "MID": [], "ATT": []}
     for p in players:
@@ -158,16 +165,11 @@ def get_team_state(team_id: int, db: Session, room_id: int = None) -> TeamStateS
         needed_min_cost = 0.0
         for pos, count_needed in missing.items():
             # A formation is possible only when enough distinct players remain.
-            available_prices = db.query(Player.base_price).filter(
-                Player.status == "AVAILABLE",
-                Player.room_id == room_id,
-                Player.position == pos
-            ).order_by(Player.base_price.asc()).limit(count_needed).all()
-
-            if len(available_prices) < count_needed:
+            position_prices = available_prices.get(pos, [])[:count_needed]
+            if len(position_prices) < count_needed:
                 formation_at_risk = True
                 break
-            needed_min_cost += sum(price for (price,) in available_prices)
+            needed_min_cost += sum(position_prices)
 
         if not formation_at_risk and remaining_budget < round(needed_min_cost, 2):
             formation_at_risk = True
@@ -203,9 +205,62 @@ def get_team_state(team_id: int, db: Session, room_id: int = None) -> TeamStateS
         best_8_ids=list(best_8_ids)
     )
 
+
+def get_team_state(team_id: int, db: Session, room_id: int = None) -> TeamStateSchema:
+    query = db.query(Team).filter(Team.id == team_id)
+    if room_id is not None:
+        query = query.filter(Team.room_id == room_id)
+    team = query.first()
+    if not team:
+        raise ValueError(f"Team with id {team_id} not found")
+
+    room_id = team.room_id
+    players = db.query(Player).filter(
+        Player.room_id == room_id, Player.team_id == team_id, Player.status == "SOLD"
+    ).all()
+    settings = db.query(Setting).filter(Setting.room_id == room_id).all()
+    available_rows = db.query(Player.position, Player.base_price).filter(
+        Player.room_id == room_id,
+        Player.status == "AVAILABLE",
+    ).all()
+    return _build_team_state(
+        team,
+        players,
+        _requirements_from_settings(settings),
+        _available_prices_by_position(available_rows),
+    )
+
+
+def get_all_team_states(db: Session, room_id: int) -> List[TeamStateSchema]:
+    """Build all 20 team states using four bulk queries instead of N+1 queries."""
+    teams = db.query(Team).filter(
+        Team.room_id == room_id
+    ).order_by(Team.team_number).all()
+    players = db.query(Player).filter(
+        Player.room_id == room_id,
+        Player.status == "SOLD",
+    ).all()
+    settings = db.query(Setting).filter(Setting.room_id == room_id).all()
+    available_rows = db.query(Player.position, Player.base_price).filter(
+        Player.room_id == room_id,
+        Player.status == "AVAILABLE",
+    ).all()
+
+    players_by_team: Dict[int, List[Player]] = {team.id: [] for team in teams}
+    for player in players:
+        if player.team_id in players_by_team:
+            players_by_team[player.team_id].append(player)
+
+    required = _requirements_from_settings(settings)
+    available_prices = _available_prices_by_position(available_rows)
+    return [
+        _build_team_state(team, players_by_team[team.id], required, available_prices)
+        for team in teams
+    ]
+
+
 def get_all_teams_leaderboard(db: Session, room_id: int) -> List[TeamStateSchema]:
-    teams = db.query(Team).filter(Team.room_id == room_id).order_by(Team.team_number).all()
-    states = [get_team_state(t.id, db, room_id) for t in teams]
+    states = get_all_team_states(db, room_id)
 
     # Sort leaderboard by:
     # 1. qualified DESC
