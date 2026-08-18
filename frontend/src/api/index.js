@@ -144,5 +144,8 @@ export const api = {
   },
   downloadSampleTemplate: () => api.downloadFile("/admin/sample-template", "fifa_players.xlsx"),
   downloadBackup: () => api.downloadFile("/admin/backup", `fifa_room_${getActiveRoom()}_backup.json`),
+  getAuditLog: (limit = 200) => fetchApi(`/admin/audit-log?limit=${limit}`),
+  downloadResultsExcel: () => api.downloadFile("/admin/export-results", `fifa_room_${getActiveRoom()}_ranked_results.xlsx`),
+  downloadAuditExcel: () => api.downloadFile("/admin/export-audit-log", `fifa_room_${getActiveRoom()}_audit_log.xlsx`),
   resetRoom: () => fetchApi("/admin/reset", { method: "POST" }),
 };

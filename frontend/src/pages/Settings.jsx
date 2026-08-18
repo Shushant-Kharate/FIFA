@@ -9,6 +9,19 @@ export default function Settings() {
   const [importLoading, setImportLoading] = useState(false);
   const [saveMsg, setSaveMsg] = useState(null);
   const [errorMsg, setErrorMsg] = useState(null);
+  const [auditLogs, setAuditLogs] = useState([]);
+  const [logsLoading, setLogsLoading] = useState(true);
+
+  const loadAuditLogs = async () => {
+    setLogsLoading(true);
+    try {
+      setAuditLogs(await api.getAuditLog(200));
+    } catch (err) {
+      setErrorMsg(err.message);
+    } finally {
+      setLogsLoading(false);
+    }
+  };
 
   const handleResetRoom = async () => {
     if (!window.confirm(`Reset all auction activity in Room ${activeRoom}? This cannot be undone.`)) return;
@@ -16,6 +29,7 @@ export default function Settings() {
       await api.resetRoom();
       setSaveMsg(`✓ Room ${activeRoom} auction reset successfully.`);
       setErrorMsg(null);
+      await loadAuditLogs();
     } catch (err) {
       setErrorMsg(err.message);
     }
@@ -31,6 +45,7 @@ export default function Settings() {
       }
     };
     loadSettings();
+    loadAuditLogs();
   }, []);
 
   const handleSaveSettings = async (e) => {
@@ -40,6 +55,7 @@ export default function Settings() {
     try {
       await api.updateSettings({ starting_budget: startingBudget });
       setSaveMsg('✓ Settings updated successfully!');
+      await loadAuditLogs();
     } catch (err) {
       setErrorMsg(err.message);
     }
@@ -60,6 +76,7 @@ export default function Settings() {
     try {
       const result = await api.importExcel(formData);
       setImportResult(result);
+      await loadAuditLogs();
     } catch (err) {
       setErrorMsg(err.message);
     } finally {
@@ -140,6 +157,15 @@ export default function Settings() {
             </button>
           </div>
 
+          <div style={{ marginTop: '12px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '10px' }}>
+            <button type="button" className="btn btn-primary" onClick={() => api.downloadResultsExcel().catch((err) => setErrorMsg(err.message))}>
+              🏆 Export Ranked Results Excel
+            </button>
+            <button type="button" className="btn btn-primary" onClick={() => api.downloadAuditExcel().then(loadAuditLogs).catch((err) => setErrorMsg(err.message))}>
+              📜 Export Full Audit Log Excel
+            </button>
+          </div>
+
           {/* Import Result Feedback */}
           {importResult && (
             <div style={{ marginTop: '20px', padding: '16px', borderRadius: '10px', background: importResult.success ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.15)', border: `1px solid ${importResult.success ? 'var(--accent-green)' : 'var(--accent-red)'}` }}>
@@ -197,7 +223,7 @@ export default function Settings() {
 
           <h3 style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--accent-red)', marginBottom: '8px' }}>Danger Zone — Room {activeRoom}</h3>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '10px' }}>
-            Reset sales, captains, unsold statuses, and transaction history in this room only.
+            Reset sales, captains, and unsold statuses in this room only. Audit and transaction history is preserved for safety.
           </p>
           <button type="button" className="btn btn-danger" onClick={handleResetRoom}>Reset Room {activeRoom} Auction</button>
 
@@ -215,6 +241,40 @@ export default function Settings() {
             <li><strong>Captain Bonus:</strong> +100% of Captain's score if Captain is in Best 8.</li>
             <li><strong>Leaderboard Tie-Breaker:</strong> Final Score DESC → Base Score DESC → Spent ASC.</li>
           </ul>
+        </div>
+      </div>
+
+      <div className="glass-card" style={{ marginTop: '24px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', alignItems: 'center', marginBottom: '14px' }}>
+          <div>
+            <h2 style={{ fontSize: '1.25rem', fontWeight: 800, margin: 0, color: '#ffffff' }}>📜 Room {activeRoom} Audit Log</h2>
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.84rem', margin: '5px 0 0' }}>
+              Permanent record of auction and administrative actions. It is not deleted when the room is reset.
+            </p>
+          </div>
+          <button type="button" className="btn btn-secondary" onClick={loadAuditLogs}>🔄 Refresh Logs</button>
+        </div>
+        <div style={{ overflowX: 'auto', maxHeight: '430px', overflowY: 'auto' }}>
+          <table className="squad-table" style={{ minWidth: '850px' }}>
+            <thead>
+              <tr><th>Time (UTC)</th><th>Action</th><th>Admin</th><th>Description</th><th>Amount</th></tr>
+            </thead>
+            <tbody>
+              {logsLoading ? (
+                <tr><td colSpan="5">Loading logs...</td></tr>
+              ) : auditLogs.length === 0 ? (
+                <tr><td colSpan="5">No new audit entries yet. Historical auction transactions remain available in the Excel export.</td></tr>
+              ) : auditLogs.map((log) => (
+                <tr key={log.id}>
+                  <td>{new Date(`${log.timestamp}${log.timestamp.endsWith('Z') ? '' : 'Z'}`).toLocaleString()}</td>
+                  <td><strong>{log.action.replaceAll('_', ' ')}</strong></td>
+                  <td>{log.actor_username}</td>
+                  <td>{log.description}</td>
+                  <td>{log.amount == null ? '—' : `€${log.amount.toFixed(2)}M`}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </div>
     </div>

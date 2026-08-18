@@ -33,7 +33,8 @@ def initialize_database() -> None:
                 text(
                     "SELECT to_regclass('public.rooms') IS NOT NULL "
                     "AND to_regclass('public.teams') IS NOT NULL "
-                    "AND to_regclass('public.players') IS NOT NULL"
+                    "AND to_regclass('public.players') IS NOT NULL "
+                    "AND to_regclass('public.audit_logs') IS NOT NULL"
                 )
             ).scalar()
             if tables_ready:
@@ -82,6 +83,40 @@ def initialize_database() -> None:
                         + "; ".join(result.errors[:5])
                     )
                 logger.info("Seeded Room %s with %s players", room_id, result.player_count)
+
+        # When the audit feature is first deployed, preserve the transaction
+        # history that already exists instead of starting the visible log empty.
+        for room_id in (1, 2):
+            if db.query(models.AuditLog).filter(models.AuditLog.room_id == room_id).count() == 0:
+                team_numbers = {
+                    team.id: team.team_number
+                    for team in db.query(models.Team).filter(models.Team.room_id == room_id).all()
+                }
+                player_names = {
+                    player.id: player.name
+                    for player in db.query(models.Player).filter(models.Player.room_id == room_id).all()
+                }
+                transactions = db.query(models.Transaction).filter(
+                    models.Transaction.room_id == room_id
+                ).order_by(models.Transaction.timestamp.asc(), models.Transaction.id.asc()).all()
+                for transaction in transactions:
+                    player_name = player_names.get(transaction.player_id, f"Player ID {transaction.player_id}")
+                    team_number = team_numbers.get(transaction.team_id)
+                    team_text = f" Team {team_number:02d}" if team_number is not None else ""
+                    amount_text = f" for €{transaction.amount:.2f}M" if transaction.amount is not None else ""
+                    db.add(models.AuditLog(
+                        room_id=room_id,
+                        action=transaction.event_type,
+                        actor_username="legacy/system",
+                        description=f"Historical record: {player_name} — {transaction.event_type}{team_text}{amount_text}",
+                        player_id=transaction.player_id,
+                        team_id=transaction.team_id,
+                        amount=transaction.amount,
+                        timestamp=transaction.timestamp,
+                    ))
+                if transactions:
+                    logger.info("Backfilled %s audit entries for Room %s", len(transactions), room_id)
+        db.commit()
         # The session is deliberately bound to this bootstrap connection so the
         # schema and both room seeds become one atomic initialization unit.
         connection.commit()

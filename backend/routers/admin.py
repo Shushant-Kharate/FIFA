@@ -7,9 +7,11 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 from database import get_db
-from models import Setting, Player, Team, Transaction
-from schemas import ImportResultSchema, SettingSchema
+from models import AuditLog, Setting, Player, Team, Transaction
+from schemas import AuditLogSchema, ImportResultSchema, SettingSchema
 from services.excel_import import process_excel_import, generate_sample_excel
+from services.excel_export import generate_audit_excel, generate_results_excel
+from services.audit_service import add_audit_log
 from auth import CurrentUser, get_active_room_id, get_current_user, require_super_admin
 
 router = APIRouter(tags=["Admin & Settings"])
@@ -39,7 +41,15 @@ async def import_excel_file(
             status_code=413,
             detail="Import file exceeds the 4 MB application limit for Vercel requests.",
         )
-    return process_excel_import(contents, filename, db, room_id)
+    result = process_excel_import(contents, filename, db, room_id)
+    if result.success:
+        add_audit_log(
+            db, room_id, "DATASET_IMPORTED", _admin.username,
+            f"Imported {result.player_count} players from {filename}",
+            details={"filename": filename, "player_count": result.player_count},
+        )
+        db.commit()
+    return result
 
 @router.get("/api/admin/sample-template")
 def download_sample_template(_user: CurrentUser = Depends(get_current_user)):
@@ -112,8 +122,58 @@ def export_backup_json(db: Session = Depends(get_db), room_id: int = Depends(get
         headers={"Content-Disposition": "attachment; filename=fifa_auction_backup.json"}
     )
 
+
+@router.get("/api/admin/audit-log", response_model=List[AuditLogSchema])
+def get_audit_log(
+    limit: int = 200,
+    db: Session = Depends(get_db),
+    room_id: int = Depends(get_active_room_id),
+):
+    safe_limit = max(1, min(limit, 1000))
+    return db.query(AuditLog).filter(
+        AuditLog.room_id == room_id
+    ).order_by(AuditLog.timestamp.desc(), AuditLog.id.desc()).limit(safe_limit).all()
+
+
+@router.get("/api/admin/export-results")
+def export_results_excel(
+    db: Session = Depends(get_db),
+    room_id: int = Depends(get_active_room_id),
+    user: CurrentUser = Depends(get_current_user),
+):
+    add_audit_log(
+        db, room_id, "RESULTS_EXPORTED", user.username,
+        f"Downloaded ranked auction results for Room {room_id}",
+    )
+    db.commit()
+    content = generate_results_excel(db, room_id)
+    return StreamingResponse(
+        io.BytesIO(content),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename=fifa_room_{room_id}_ranked_results.xlsx"},
+    )
+
+
+@router.get("/api/admin/export-audit-log")
+def export_audit_log_excel(
+    db: Session = Depends(get_db),
+    room_id: int = Depends(get_active_room_id),
+    user: CurrentUser = Depends(get_current_user),
+):
+    add_audit_log(
+        db, room_id, "AUDIT_LOG_EXPORTED", user.username,
+        f"Downloaded the full audit log for Room {room_id}",
+    )
+    db.commit()
+    content = generate_audit_excel(db, room_id)
+    return StreamingResponse(
+        io.BytesIO(content),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename=fifa_room_{room_id}_audit_log.xlsx"},
+    )
+
 @router.post("/api/admin/reset")
-def reset_room_auction(db: Session = Depends(get_db), room_id: int = Depends(get_active_room_id)):
+def reset_room_auction(db: Session = Depends(get_db), room_id: int = Depends(get_active_room_id), user: CurrentUser = Depends(get_current_user)):
     player_count = db.query(Player).filter(Player.room_id == room_id).update(
         {
             "status": "AVAILABLE",
@@ -123,15 +183,18 @@ def reset_room_auction(db: Session = Depends(get_db), room_id: int = Depends(get
         },
         synchronize_session=False,
     )
-    transaction_count = db.query(Transaction).filter(Transaction.room_id == room_id).delete(
-        synchronize_session=False
+    transaction_count = db.query(Transaction).filter(Transaction.room_id == room_id).count()
+    add_audit_log(
+        db, room_id, "ROOM_RESET", user.username,
+        f"Reset Room {room_id} auction; {player_count} players returned to the pool",
+        details={"players_reset": player_count, "transactions_preserved": transaction_count},
     )
     db.commit()
     return {
         "success": True,
         "room_id": room_id,
         "players_reset": player_count,
-        "transactions_removed": transaction_count,
+        "transactions_preserved": transaction_count,
     }
 
 @router.get("/api/settings", response_model=Dict[str, str])
@@ -140,7 +203,7 @@ def get_settings(db: Session = Depends(get_db), room_id: int = Depends(get_activ
     return {s.key: s.value for s in settings}
 
 @router.put("/api/settings", response_model=Dict[str, str])
-def update_settings(new_settings: Dict[str, str], db: Session = Depends(get_db), room_id: int = Depends(get_active_room_id)):
+def update_settings(new_settings: Dict[str, str], db: Session = Depends(get_db), room_id: int = Depends(get_active_room_id), user: CurrentUser = Depends(get_current_user)):
     unknown_keys = sorted(set(new_settings) - ALLOWED_SETTING_KEYS)
     if unknown_keys:
         raise HTTPException(
@@ -198,6 +261,12 @@ def update_settings(new_settings: Dict[str, str], db: Session = Depends(get_db),
     # If starting_budget updated, update all teams
     if "starting_budget" in new_settings:
         db.query(Team).filter(Team.room_id == room_id).update({"starting_budget": budget})
+
+    add_audit_log(
+        db, room_id, "SETTINGS_UPDATED", user.username,
+        f"Updated Room {room_id} settings: {', '.join(sorted(normalized_settings))}",
+        details=normalized_settings,
+    )
 
     db.commit()
     settings = db.query(Setting).filter(Setting.room_id == room_id).all()

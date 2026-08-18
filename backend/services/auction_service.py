@@ -2,9 +2,10 @@ from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
 from models import Player, Team, Transaction
 from services.scoring import get_team_state
+from services.audit_service import add_audit_log
 from schemas import TeamStateSchema, PlayerSchema
 
-def sell_player(player_id: int, team_id: int, price: float, db: Session, room_id: int) -> TeamStateSchema:
+def sell_player(player_id: int, team_id: int, price: float, db: Session, room_id: int, actor_username: str = "system") -> TeamStateSchema:
     player = db.query(Player).filter(Player.id == player_id, Player.room_id == room_id).with_for_update().first()
     if not player:
         raise HTTPException(status_code=404, detail=f"Player ID {player_id} not found")
@@ -40,11 +41,17 @@ def sell_player(player_id: int, team_id: int, price: float, db: Session, room_id
         amount=round(price, 2)
     )
     db.add(txn)
+    add_audit_log(
+        db, room_id, "PLAYER_SOLD", actor_username,
+        f"{player.name} sold to Team {team.team_number:02d} for €{price:.2f}M",
+        player_id=player_id, team_id=team_id, amount=round(price, 2),
+        details={"player_code": player.player_code, "player_score": player.score},
+    )
     db.commit()
 
     return get_team_state(team_id, db, room_id)
 
-def mark_unsold(player_id: int, db: Session, room_id: int) -> PlayerSchema:
+def mark_unsold(player_id: int, db: Session, room_id: int, actor_username: str = "system") -> PlayerSchema:
     player = db.query(Player).filter(Player.id == player_id, Player.room_id == room_id).with_for_update().first()
     if not player:
         raise HTTPException(status_code=404, detail=f"Player ID {player_id} not found")
@@ -66,12 +73,17 @@ def mark_unsold(player_id: int, db: Session, room_id: int) -> PlayerSchema:
         amount=None
     )
     db.add(txn)
+    add_audit_log(
+        db, room_id, "PLAYER_UNSOLD", actor_username,
+        f"{player.name} marked unsold", player_id=player_id,
+        details={"player_code": player.player_code, "player_score": player.score},
+    )
     db.commit()
     db.refresh(player)
 
     return PlayerSchema.model_validate(player)
 
-def undo_last_sale(player_id: int, db: Session, room_id: int) -> PlayerSchema:
+def undo_last_sale(player_id: int, db: Session, room_id: int, actor_username: str = "system") -> PlayerSchema:
     player = db.query(Player).filter(Player.id == player_id, Player.room_id == room_id).with_for_update().first()
     if not player:
         raise HTTPException(status_code=404, detail=f"Player ID {player_id} not found")
@@ -102,12 +114,19 @@ def undo_last_sale(player_id: int, db: Session, room_id: int) -> PlayerSchema:
         amount=None
     )
     db.add(undo_txn)
+    team = db.query(Team).filter(Team.id == prev_team_id).first() if prev_team_id else None
+    add_audit_log(
+        db, room_id, "SALE_UNDONE", actor_username,
+        f"Sale of {player.name} to Team {team.team_number:02d} was undone" if team else f"Sale of {player.name} was undone",
+        player_id=player_id, team_id=prev_team_id,
+        details={"player_code": player.player_code},
+    )
     db.commit()
     db.refresh(player)
 
     return PlayerSchema.model_validate(player)
 
-def return_to_pool(player_id: int, db: Session, room_id: int) -> PlayerSchema:
+def return_to_pool(player_id: int, db: Session, room_id: int, actor_username: str = "system") -> PlayerSchema:
     player = db.query(Player).filter(Player.id == player_id, Player.room_id == room_id).with_for_update().first()
     if not player:
         raise HTTPException(status_code=404, detail=f"Player ID {player_id} not found")
@@ -128,12 +147,17 @@ def return_to_pool(player_id: int, db: Session, room_id: int) -> PlayerSchema:
         amount=None
     )
     db.add(txn)
+    add_audit_log(
+        db, room_id, "RETURNED_TO_POOL", actor_username,
+        f"{player.name} returned to the available pool", player_id=player_id,
+        details={"player_code": player.player_code},
+    )
     db.commit()
     db.refresh(player)
 
     return PlayerSchema.model_validate(player)
 
-def set_captain(team_id: int, player_id: int, db: Session, room_id: int) -> TeamStateSchema:
+def set_captain(team_id: int, player_id: int, db: Session, room_id: int, actor_username: str = "system") -> TeamStateSchema:
     player = db.query(Player).filter(Player.id == player_id, Player.room_id == room_id).with_for_update().first()
     if not player:
         raise HTTPException(status_code=404, detail=f"Player ID {player_id} not found")
@@ -169,6 +193,12 @@ def set_captain(team_id: int, player_id: int, db: Session, room_id: int) -> Team
         amount=None
     )
     db.add(txn)
+    add_audit_log(
+        db, room_id, "CAPTAIN_SET", actor_username,
+        f"{player.name} set as captain of Team {team.team_number:02d}",
+        player_id=player_id, team_id=team_id,
+        details={"player_code": player.player_code, "player_score": player.score},
+    )
     db.commit()
 
     return get_team_state(team_id, db, room_id)

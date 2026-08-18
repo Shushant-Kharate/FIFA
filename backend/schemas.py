@@ -89,6 +89,20 @@ class TransactionSchema(BaseModel):
     amount: Optional[float]
     timestamp: datetime
 
+
+class AuditLogSchema(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    action: str
+    actor_username: str
+    description: str
+    player_id: Optional[int] = None
+    team_id: Optional[int] = None
+    amount: Optional[float] = None
+    details_json: Optional[str] = None
+    timestamp: datetime
+
 class SettingSchema(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

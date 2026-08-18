@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import relationship
 
 from database import Base
@@ -62,6 +62,23 @@ class Transaction(Base):
     team_id = Column(Integer, nullable=True)
     amount = Column(Float, nullable=True)
     timestamp = Column(DateTime, default=datetime.utcnow)
+
+
+class AuditLog(Base):
+    """Append-only operational history that survives auction resets."""
+
+    __tablename__ = "audit_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    room_id = Column(Integer, ForeignKey("rooms.id"), nullable=False, index=True)
+    action = Column(String, nullable=False, index=True)
+    actor_username = Column(String, nullable=False)
+    description = Column(Text, nullable=False)
+    player_id = Column(Integer, nullable=True)
+    team_id = Column(Integer, nullable=True)
+    amount = Column(Float, nullable=True)
+    details_json = Column(Text, nullable=True)
+    timestamp = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
 
 
 class Setting(Base):

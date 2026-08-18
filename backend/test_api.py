@@ -1,6 +1,8 @@
 from pathlib import Path
+from io import BytesIO
 
 import pytest
+from openpyxl import load_workbook
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -189,6 +191,21 @@ def test_all_business_routes_and_room_isolation(api_context):
 
     backup = client.get("/api/admin/backup", headers=room1_headers)
     assert backup.status_code == 200 and backup.json()["room_id"] == 1
+    audit_log = client.get("/api/admin/audit-log", headers=room1_headers)
+    assert audit_log.status_code == 200
+    assert any(entry["action"] == "CAPTAIN_SET" for entry in audit_log.json())
+    results_excel = client.get("/api/admin/export-results", headers=room1_headers)
+    assert results_excel.status_code == 200 and results_excel.content[:2] == b"PK"
+    results_workbook = load_workbook(BytesIO(results_excel.content), read_only=True)
+    assert results_workbook.sheetnames == ["Leaderboard", "Team Squads"]
+    assert results_workbook["Leaderboard"]["A2"].value == 1
+    assert results_workbook["Leaderboard"]["C2"].value == "Yes"
+    assert results_workbook["Team Squads"]["E2"].value
+    audit_excel = client.get("/api/admin/export-audit-log", headers=room1_headers)
+    assert audit_excel.status_code == 200 and audit_excel.content[:2] == b"PK"
+    audit_workbook = load_workbook(BytesIO(audit_excel.content), read_only=True)
+    assert audit_workbook.sheetnames == ["Audit Log", "Transaction Ledger"]
+    assert audit_workbook["Audit Log"].max_row > 1
     template = client.get("/api/admin/sample-template", headers=room1_headers)
     assert template.status_code == 200 and template.content[:2] == b"PK"
     assert client.post(
@@ -233,7 +250,10 @@ def test_all_business_routes_and_room_isolation(api_context):
         ("GET", "/api/results"),
         ("POST", "/api/admin/import"),
         ("GET", "/api/admin/sample-template"),
-        ("GET", "/api/admin/backup"),
+            ("GET", "/api/admin/backup"),
+            ("GET", "/api/admin/audit-log"),
+            ("GET", "/api/admin/export-results"),
+            ("GET", "/api/admin/export-audit-log"),
         ("POST", "/api/admin/reset"),
         ("GET", "/api/settings"),
         ("PUT", "/api/settings"),
