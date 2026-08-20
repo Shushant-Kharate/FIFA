@@ -137,11 +137,11 @@ export default function Settings() {
     }
   };
 
-  const nTeams = Math.max(1, Math.min(40, parseInt(participatingTeams, 10) || 20));
-  const previewGk = Math.min(17, Math.round((17 * nTeams) / 20));
-  const previewDef = Math.min(59, Math.round((59 * nTeams) / 20));
-  const previewMid = Math.min(38, Math.round((38 * nTeams) / 20));
-  const previewAtt = Math.min(38, Math.round((38 * nTeams) / 20));
+  const teamCount = Math.max(1, Math.min(40, parseInt(participatingTeams, 10) || 20));
+  const previewGk = Math.min(17, Math.round((17 * teamCount) / 20));
+  const previewDef = Math.min(59, Math.round((59 * teamCount) / 20));
+  const previewMid = Math.min(38, Math.round((38 * teamCount) / 20));
+  const previewAtt = Math.min(38, Math.round((38 * teamCount) / 20));
   const previewTotal = previewGk + previewDef + previewMid + previewAtt;
   const removedTotal = 152 - previewTotal;
 
@@ -321,7 +321,7 @@ export default function Settings() {
             {/* Preview Breakdown Table */}
             <div style={{ fontSize: '0.82rem', marginBottom: '16px' }}>
               <div style={{ fontWeight: 800, color: 'var(--text-muted)', marginBottom: '6px' }}>
-                Projected Roster Balance ({nTeams} Teams):
+                Projected Roster Balance ({teamCount} Teams):
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '6px', textAlign: 'center' }}>
                 <div style={{ background: 'var(--card-bg)', padding: '8px', borderRadius: '6px' }}>
@@ -358,7 +358,7 @@ export default function Settings() {
               style={{ width: '100%' }}
               disabled={scaleLoading}
             >
-              {scaleLoading ? 'Scaling Dataset & Teams...' : `Scale Dataset & Teams to ${nTeams}`}
+              {scaleLoading ? 'Scaling Dataset & Teams...' : `Scale Dataset & Teams to ${teamCount}`}
             </button>
           </form>
 
