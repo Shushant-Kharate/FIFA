@@ -230,6 +230,29 @@ def test_dataset_scaling_for_10_teams(db_session):
     assert room2_player_count == 152
     assert room2_team_count == 20
 
+    restored = scale_dataset_for_teams(
+        ScaleDatasetRequest(participating_teams=15),
+        db=db_session,
+        room_id=1,
+        user=mock_user,
+    )
+    assert restored.restored_players_count == 38
+    assert restored.player_count == 115
+    assert db_session.query(models.Player).filter(
+        models.Player.room_id == 1,
+        models.Player.status == "SCALED_OUT",
+    ).count() == 37
+
+    expanded = scale_dataset_for_teams(
+        ScaleDatasetRequest(participating_teams=35),
+        db=db_session,
+        room_id=1,
+        user=mock_user,
+    )
+    assert expanded.player_count == 152
+    assert expanded.restored_players_count == 37
+    assert db_session.query(models.Team).filter(models.Team.room_id == 1).count() == 35
+
 
 
 def test_dataset_scaling_blocked_when_player_sold(db_session):

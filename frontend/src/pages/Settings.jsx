@@ -73,11 +73,11 @@ export default function Settings() {
   const handleScaleDataset = async (e) => {
     e.preventDefault();
     const n = parseInt(participatingTeams, 10);
-    if (!n || n < 1 || n > 20) {
-      setErrorMsg('Participating teams must be between 1 and 20.');
+    if (!n || n < 1 || n > 40) {
+      setErrorMsg('Participating teams must be between 1 and 40.');
       return;
     }
-    if (!window.confirm(`Scale Room ${activeRoom} player pool and teams to ${n} teams? This will permanently remove the lowest-rated players across all positions to balance the tournament.`)) return;
+    if (!window.confirm(`Scale Room ${activeRoom} player pool and teams to ${n} teams? Players removed while scaling down will be preserved and the highest-rated eligible players will return when scaling back up.`)) return;
 
     setSaveMsg(null);
     setErrorMsg(null);
@@ -137,11 +137,11 @@ export default function Settings() {
     }
   };
 
-  const nTeams = Math.max(1, Math.min(20, parseInt(participatingTeams, 10) || 20));
-  const previewGk = Math.round((17 * nTeams) / 20);
-  const previewDef = Math.round((59 * nTeams) / 20);
-  const previewMid = Math.round((38 * nTeams) / 20);
-  const previewAtt = Math.round((38 * nTeams) / 20);
+  const nTeams = Math.max(1, Math.min(40, parseInt(participatingTeams, 10) || 20));
+  const previewGk = Math.min(17, Math.round((17 * nTeams) / 20));
+  const previewDef = Math.min(59, Math.round((59 * nTeams) / 20));
+  const previewMid = Math.min(38, Math.round((38 * nTeams) / 20));
+  const previewAtt = Math.min(38, Math.round((38 * nTeams) / 20));
   const previewTotal = previewGk + previewDef + previewMid + previewAtt;
   const removedTotal = 152 - previewTotal;
 
@@ -284,7 +284,7 @@ export default function Settings() {
                 onChange={(e) => setStartingBudget(e.target.value)}
               />
               <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                Default is 700M. Updating this will adjust starting budget across all 20 teams.
+                Default is 700M. Updating this will adjust starting budget across all {participatingTeams} configured teams.
               </span>
             </div>
 
@@ -299,18 +299,18 @@ export default function Settings() {
             ⚖️ Event Size & Dataset Scaling
           </h3>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '14px' }}>
-            If fewer than 20 teams participate, scale the player pool down proportionally. The system automatically prunes the lowest-rated players per position (GK, DEF, MID, ATT) using exact ratio rules.
+            Configure between 1 and 40 teams per room. Below 20 teams, the player pool scales down proportionally; above 20 teams, all available players remain active while the additional teams are added.
           </p>
 
           <form onSubmit={handleScaleDataset} style={{ background: 'var(--bg-dark)', padding: '16px', borderRadius: '10px', border: '1px solid var(--border-color)', marginBottom: '20px' }}>
             <div style={{ marginBottom: '14px' }}>
               <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-muted)', fontWeight: 700, marginBottom: '6px' }}>
-                NUMBER OF PARTICIPATING TEAMS (1 - 20)
+                NUMBER OF PARTICIPATING TEAMS (1 - 40)
               </label>
               <input
                 type="number"
                 min="1"
-                max="20"
+                max="40"
                 className="input-field"
                 value={participatingTeams}
                 onChange={(e) => setParticipatingTeams(e.target.value)}
@@ -347,7 +347,7 @@ export default function Settings() {
               </div>
               {removedTotal > 0 && (
                 <div style={{ marginTop: '8px', color: 'var(--accent-red)', fontSize: '0.78rem' }}>
-                  ⚠️ {removedTotal} lowest-rated player(s) will be pruned from dataset.
+                  ⚠️ {removedTotal} lowest-rated player(s) will be held aside and can be restored later.
                 </div>
               )}
             </div>

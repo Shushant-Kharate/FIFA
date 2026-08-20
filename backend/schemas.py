@@ -134,7 +134,7 @@ class RemovedPlayerSchema(BaseModel):
 
 
 class ScaleDatasetRequest(BaseModel):
-    participating_teams: int = Field(..., ge=1, le=20)
+    participating_teams: int = Field(..., ge=1, le=40)
 
 
 class ScaleDatasetResponseSchema(BaseModel):
@@ -147,6 +147,7 @@ class ScaleDatasetResponseSchema(BaseModel):
     mid_count: int
     att_count: int
     removed_players_count: int
+    restored_players_count: int = 0
     removed_players: List[RemovedPlayerSchema] = Field(default_factory=list)
 
 

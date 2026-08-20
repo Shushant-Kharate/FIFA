@@ -31,7 +31,8 @@ export default function Dashboard() {
     loadData();
   }, []);
 
-  const totalPlayers = players.length;
+  const activePlayers = players.filter((p) => p.status !== 'SCALED_OUT');
+  const totalPlayers = activePlayers.length;
   const soldPlayers = players.filter((p) => p.status === 'SOLD').length;
   const unsoldPlayers = players.filter((p) => p.status === 'UNSOLD').length;
   const availablePlayers = players.filter((p) => p.status === 'AVAILABLE').length;
@@ -47,8 +48,8 @@ export default function Dashboard() {
           <h1 style={{ fontSize: '2rem', fontWeight: 900, margin: 0, letterSpacing: '-0.5px' }}>
             Auction Control Dashboard
           </h1>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem' }}>
-            Real-time status overview of 20 competing teams & {totalPlayers} players
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem' }}>
+              Real-time status overview of {teams.length} competing teams & {totalPlayers} players
           </p>
         </div>
 
@@ -121,7 +122,7 @@ export default function Dashboard() {
 
       {/* Teams Grid */}
       <h2 style={{ fontSize: '1.3rem', fontWeight: 800, marginBottom: '16px', color: '#ffffff' }}>
-        🛡️ 20 Teams Overview
+        🛡️ {teams.length} Teams Overview
       </h2>
 
       {loading ? (

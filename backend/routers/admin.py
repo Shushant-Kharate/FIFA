@@ -221,7 +221,34 @@ def scale_dataset_for_teams(
 
     n_teams = req.participating_teams
     removed_count = 0
+    restored_count = 0
     removed_players_list = []
+
+    # Older versions deleted scaled-out rows but kept their complete data in
+    # the latest scaling audit entry. Rehydrate that legacy pool before scaling
+    # up, unless a newer import replaced the dataset.
+    latest_audit = (
+        db.query(AuditLog)
+        .filter(AuditLog.room_id == room_id)
+        .order_by(AuditLog.timestamp.desc(), AuditLog.id.desc())
+        .first()
+    )
+    if latest_audit and latest_audit.action == "DATASET_SCALED" and latest_audit.details_json:
+        try:
+            legacy_removed = json.loads(latest_audit.details_json).get("removed_players", [])
+        except (TypeError, ValueError):
+            legacy_removed = []
+        existing_codes = {
+            code for (code,) in db.query(Player.player_code).filter(Player.room_id == room_id).all()
+        }
+        if not db.query(Player).filter(
+            Player.room_id == room_id,
+            Player.status == "SCALED_OUT",
+        ).first():
+            for player_data in legacy_removed:
+                if player_data.get("player_code") in existing_codes:
+                    continue
+                db.add(Player(**player_data, room_id=room_id, status="SCALED_OUT"))
 
     # For each position, calculate target count using standard half-up rounding
     for pos, base_count in BASE_POS_COUNTS.items():
@@ -229,7 +256,11 @@ def scale_dataset_for_teams(
 
         pos_players = (
             db.query(Player)
-            .filter(Player.room_id == room_id, Player.position == pos)
+            .filter(
+                Player.room_id == room_id,
+                Player.position == pos,
+                Player.status != "SCALED_OUT",
+            )
             .order_by(Player.score.asc(), Player.player_code.asc())
             .all()
         )
@@ -237,9 +268,9 @@ def scale_dataset_for_teams(
         current_count = len(pos_players)
         if current_count > target_count:
             to_remove_count = current_count - target_count
-            players_to_delete = pos_players[:to_remove_count]
+            players_to_remove = pos_players[:to_remove_count]
             
-            for p in players_to_delete:
+            for p in players_to_remove:
                 removed_players_list.append({
                     "player_code": p.player_code,
                     "name": p.name,
@@ -253,11 +284,27 @@ def scale_dataset_for_teams(
                     "club": p.club,
                 })
 
-            delete_ids = [p.id for p in players_to_delete]
-
-            db.query(Transaction).filter(Transaction.room_id == room_id, Transaction.player_id.in_(delete_ids)).delete(synchronize_session=False)
-            db.query(Player).filter(Player.id.in_(delete_ids)).delete(synchronize_session=False)
-            removed_count += len(delete_ids)
+            for p in players_to_remove:
+                p.status = "SCALED_OUT"
+                p.team_id = None
+                p.sold_price = None
+                p.is_captain = False
+            removed_count += len(players_to_remove)
+        elif current_count < target_count:
+            players_to_restore = (
+                db.query(Player)
+                .filter(
+                    Player.room_id == room_id,
+                    Player.position == pos,
+                    Player.status == "SCALED_OUT",
+                )
+                .order_by(Player.score.desc(), Player.player_code.asc())
+                .limit(target_count - current_count)
+                .all()
+            )
+            for p in players_to_restore:
+                p.status = "AVAILABLE"
+                restored_count += 1
 
     # Adjust teams count in room to n_teams
     surplus_teams = db.query(Team).filter(Team.room_id == room_id, Team.team_number > n_teams).all()
@@ -280,27 +327,33 @@ def scale_dataset_for_teams(
     else:
         db.add(Setting(room_id=room_id, key="participating_teams", value=str(n_teams)))
 
-    gk_c = db.query(Player).filter(Player.room_id == room_id, Player.position == "GK").count()
-    def_c = db.query(Player).filter(Player.room_id == room_id, Player.position == "DEF").count()
-    mid_c = db.query(Player).filter(Player.room_id == room_id, Player.position == "MID").count()
-    att_c = db.query(Player).filter(Player.room_id == room_id, Player.position == "ATT").count()
+    db.flush()
+    active_players = db.query(Player).filter(
+        Player.room_id == room_id,
+        Player.status != "SCALED_OUT",
+    )
+    gk_c = active_players.filter(Player.position == "GK").count()
+    def_c = active_players.filter(Player.position == "DEF").count()
+    mid_c = active_players.filter(Player.position == "MID").count()
+    att_c = active_players.filter(Player.position == "ATT").count()
     total_players = gk_c + def_c + mid_c + att_c
 
     add_audit_log(
         db, room_id, "DATASET_SCALED", user.username,
-        f"Scaled dataset and team count to {n_teams} teams in Room {room_id}. Removed {removed_count} lowest-rated player(s). Remaining: {total_players} players.",
+        f"Scaled dataset and team count to {n_teams} teams in Room {room_id}. Removed {removed_count} and restored {restored_count} player(s). Remaining: {total_players} players.",
         details={
             "participating_teams": n_teams,
             "removed_count": removed_count,
+            "restored_count": restored_count,
             "total_players": total_players,
-            "removed_players": removed_players_list,
+            "removed_players": get_removed_players(db=db, room_id=room_id),
         }
     )
     db.commit()
 
     return ScaleDatasetResponseSchema(
         success=True,
-        message=f"Successfully scaled room dataset to {n_teams} teams ({total_players} players remaining).",
+        message=f"Successfully scaled room dataset to {n_teams} teams ({total_players} players active; {restored_count} restored).",
         participating_teams=n_teams,
         player_count=total_players,
         gk_count=gk_c,
@@ -308,7 +361,8 @@ def scale_dataset_for_teams(
         mid_count=mid_c,
         att_count=att_c,
         removed_players_count=removed_count,
-        removed_players=removed_players_list,
+        restored_players_count=restored_count,
+        removed_players=get_removed_players(db=db, room_id=room_id),
     )
 
 
@@ -317,19 +371,24 @@ def get_removed_players(
     db: Session = Depends(get_db),
     room_id: int = Depends(get_active_room_id),
 ):
-    latest_log = (
-        db.query(AuditLog)
-        .filter(AuditLog.room_id == room_id, AuditLog.action == "DATASET_SCALED")
-        .order_by(AuditLog.timestamp.desc(), AuditLog.id.desc())
-        .first()
-    )
-    if not latest_log or not latest_log.details_json:
-        return []
-    try:
-        data = json.loads(latest_log.details_json)
-        return data.get("removed_players", [])
-    except Exception:
-        return []
+    return [
+        {
+            "player_code": player.player_code,
+            "name": player.name,
+            "position": player.position,
+            "score": player.score,
+            "p1": player.p1,
+            "p2": player.p2,
+            "p3": player.p3,
+            "base_price": player.base_price,
+            "nationality": player.nationality,
+            "club": player.club,
+        }
+        for player in db.query(Player)
+        .filter(Player.room_id == room_id, Player.status == "SCALED_OUT")
+        .order_by(Player.position.asc(), Player.score.asc(), Player.player_code.asc())
+        .all()
+    ]
 
 
 @router.get("/api/admin/export-removed-players")
@@ -408,6 +467,15 @@ def update_settings(new_settings: Dict[str, str], db: Session = Depends(get_db),
         if requirement < 0 or requirement > 20:
             raise HTTPException(status_code=422, detail=f"{key} must be between 0 and 20")
         normalized_settings[key] = str(requirement)
+
+    if "participating_teams" in new_settings:
+        try:
+            participating_teams = int(new_settings["participating_teams"])
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=422, detail="participating_teams must be a whole number")
+        if participating_teams < 1 or participating_teams > 40:
+            raise HTTPException(status_code=422, detail="participating_teams must be between 1 and 40")
+        normalized_settings["participating_teams"] = str(participating_teams)
 
     for key, value in normalized_settings.items():
         setting = db.query(Setting).filter(Setting.room_id == room_id, Setting.key == key).first()

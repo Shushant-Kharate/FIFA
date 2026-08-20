@@ -143,7 +143,7 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(
     title="FIFA Auction Management System API",
-    description="Backend API for 20-team live FIFA player auction",
+    description="Backend API for up to 40-team live FIFA player auctions",
     version="1.0.0",
     lifespan=lifespan,
 )
