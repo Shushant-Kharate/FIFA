@@ -194,3 +194,57 @@ def test_formation_at_risk_when_too_few_distinct_players_remain():
     state = get_team_state(team.id, db, room_id=1)
     assert state.formation_at_risk is True
     db.close()
+
+
+def test_dataset_scaling_for_10_teams(db_session):
+    from routers.admin import scale_dataset_for_teams
+    from schemas import ScaleDatasetRequest
+    from models import Room
+
+    mock_user = type("MockUser", (), {"username": "admin"})()
+
+    # Scale room 1 to 10 teams
+    res = scale_dataset_for_teams(ScaleDatasetRequest(participating_teams=10), db=db_session, room_id=1, user=mock_user)
+
+    assert res.success is True
+    assert res.participating_teams == 10
+    assert res.gk_count == 9      # round(17 * 10 / 20) = 9
+    assert res.def_count == 30    # round(59 * 10 / 20) = 30
+    assert res.mid_count == 19    # round(38 * 10 / 20) = 19
+    assert res.att_count == 19    # round(38 * 10 / 20) = 19
+    assert res.removed_players_count == 75
+    assert len(res.removed_players) == 75
+
+    from routers.admin import get_removed_players
+    removed = get_removed_players(db=db_session, room_id=1)
+    assert len(removed) == 75
+    assert removed[0]["player_code"] is not None
+
+    # Verify team count trimmed to 10
+    team_count = db_session.query(models.Team).filter(models.Team.room_id == 1).count()
+    assert team_count == 10
+
+    # Verify room 2 remains untouched (152 players, 20 teams)
+    room2_player_count = db_session.query(models.Player).filter(models.Player.room_id == 2).count()
+    room2_team_count = db_session.query(models.Team).filter(models.Team.room_id == 2).count()
+    assert room2_player_count == 152
+    assert room2_team_count == 20
+
+
+
+def test_dataset_scaling_blocked_when_player_sold(db_session):
+    from routers.admin import scale_dataset_for_teams
+    from schemas import ScaleDatasetRequest
+
+    mock_user = type("MockUser", (), {"username": "admin"})()
+
+    # Sell one player in room 1
+    gk = db_session.query(models.Player).filter(models.Player.room_id == 1, models.Player.position == "GK").first()
+    sell_player(gk.id, 1, 5.0, db_session, room_id=1)
+
+    with pytest.raises(HTTPException) as exc_info:
+        scale_dataset_for_teams(ScaleDatasetRequest(participating_teams=10), db=db_session, room_id=1, user=mock_user)
+
+    assert exc_info.value.status_code == 400
+    assert "Cannot scale dataset after auction has started" in exc_info.value.detail
+

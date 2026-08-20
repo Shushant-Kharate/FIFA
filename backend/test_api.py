@@ -255,9 +255,14 @@ def test_all_business_routes_and_room_isolation(api_context):
             ("GET", "/api/admin/export-results"),
             ("GET", "/api/admin/export-audit-log"),
         ("POST", "/api/admin/reset"),
+        ("POST", "/api/admin/scale-dataset"),
+        ("GET", "/api/admin/removed-players"),
+        ("GET", "/api/admin/export-removed-players"),
         ("GET", "/api/settings"),
         ("PUT", "/api/settings"),
     }
+
+
     actual_business_routes = {
         (method.upper(), path)
         for path, operations in app.openapi()["paths"].items()

@@ -12,6 +12,14 @@ export default function Settings() {
   const [auditLogs, setAuditLogs] = useState([]);
   const [logsLoading, setLogsLoading] = useState(true);
 
+  const [participatingTeams, setParticipatingTeams] = useState('20');
+  const [scaleLoading, setScaleLoading] = useState(false);
+
+  const [removedPlayers, setRemovedPlayers] = useState([]);
+  const [removedLoading, setRemovedLoading] = useState(false);
+  const [removedSearch, setRemovedSearch] = useState('');
+  const [removedPosFilter, setRemovedPosFilter] = useState('ALL');
+
   const loadAuditLogs = async () => {
     setLogsLoading(true);
     try {
@@ -23,6 +31,17 @@ export default function Settings() {
     }
   };
 
+  const loadRemovedPlayers = async () => {
+    setRemovedLoading(true);
+    try {
+      setRemovedPlayers(await api.getRemovedPlayers());
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setRemovedLoading(false);
+    }
+  };
+
   const handleResetRoom = async () => {
     if (!window.confirm(`Reset all auction activity in Room ${activeRoom}? This cannot be undone.`)) return;
     try {
@@ -30,6 +49,7 @@ export default function Settings() {
       setSaveMsg(`✓ Room ${activeRoom} auction reset successfully.`);
       setErrorMsg(null);
       await loadAuditLogs();
+      await loadRemovedPlayers();
     } catch (err) {
       setErrorMsg(err.message);
     }
@@ -40,13 +60,46 @@ export default function Settings() {
       try {
         const s = await api.getSettings();
         if (s.starting_budget) setStartingBudget(s.starting_budget);
+        if (s.participating_teams) setParticipatingTeams(s.participating_teams);
       } catch (err) {
         console.error(err);
       }
     };
     loadSettings();
     loadAuditLogs();
+    loadRemovedPlayers();
   }, []);
+
+  const handleScaleDataset = async (e) => {
+    e.preventDefault();
+    const n = parseInt(participatingTeams, 10);
+    if (!n || n < 1 || n > 20) {
+      setErrorMsg('Participating teams must be between 1 and 20.');
+      return;
+    }
+    if (!window.confirm(`Scale Room ${activeRoom} player pool and teams to ${n} teams? This will permanently remove the lowest-rated players across all positions to balance the tournament.`)) return;
+
+    setSaveMsg(null);
+    setErrorMsg(null);
+    setScaleLoading(true);
+
+    try {
+      const res = await api.scaleDataset(n);
+      setSaveMsg(`✓ ${res.message}`);
+      if (res.removed_players) {
+        setRemovedPlayers(res.removed_players);
+      } else {
+        await loadRemovedPlayers();
+      }
+      await loadAuditLogs();
+    } catch (err) {
+      setErrorMsg(err.message);
+    } finally {
+      setScaleLoading(false);
+    }
+  };
+
+
 
   const handleSaveSettings = async (e) => {
     e.preventDefault();
@@ -84,12 +137,24 @@ export default function Settings() {
     }
   };
 
+  const filteredRemovedPlayers = removedPlayers.filter((p) => {
+    const q = removedSearch.trim().toLowerCase();
+    const matchesSearch =
+      !q ||
+      p.name.toLowerCase().includes(q) ||
+      p.player_code.toLowerCase().includes(q) ||
+      (p.club && p.club.toLowerCase().includes(q)) ||
+      (p.nationality && p.nationality.toLowerCase().includes(q));
+    const matchesPos = removedPosFilter === 'ALL' || p.position === removedPosFilter;
+    return matchesSearch && matchesPos;
+  });
+
   return (
     <div>
       <div style={{ marginBottom: '24px' }}>
         <h1 style={{ fontSize: '2rem', fontWeight: 900, margin: 0 }}>⚙️ Admin & System Settings</h1>
         <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem' }}>
-          Import Excel player data, export database backups & configure tournament rules
+          Import Excel player data, scale tournament dataset, export database backups & configure tournament rules
         </p>
       </div>
 
@@ -221,6 +286,76 @@ export default function Settings() {
 
           <hr style={{ borderColor: 'var(--border-color)', margin: '20px 0' }} />
 
+          <h3 style={{ fontSize: '1rem', fontWeight: 800, marginBottom: '10px', color: '#ffffff' }}>
+            ⚖️ Event Size & Dataset Scaling
+          </h3>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '14px' }}>
+            If fewer than 20 teams participate, scale the player pool down proportionally. The system automatically prunes the lowest-rated players per position (GK, DEF, MID, ATT) using exact ratio rules.
+          </p>
+
+          <form onSubmit={handleScaleDataset} style={{ background: 'var(--bg-dark)', padding: '16px', borderRadius: '10px', border: '1px solid var(--border-color)', marginBottom: '20px' }}>
+            <div style={{ marginBottom: '14px' }}>
+              <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-muted)', fontWeight: 700, marginBottom: '6px' }}>
+                NUMBER OF PARTICIPATING TEAMS (1 - 20)
+              </label>
+              <input
+                type="number"
+                min="1"
+                max="20"
+                className="input-field"
+                value={participatingTeams}
+                onChange={(e) => setParticipatingTeams(e.target.value)}
+                disabled={scaleLoading}
+              />
+            </div>
+
+            {/* Preview Breakdown Table */}
+            <div style={{ fontSize: '0.82rem', marginBottom: '16px' }}>
+              <div style={{ fontWeight: 800, color: 'var(--text-muted)', marginBottom: '6px' }}>
+                Projected Roster Balance ({nTeams} Teams):
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '6px', textAlign: 'center' }}>
+                <div style={{ background: 'var(--card-bg)', padding: '8px', borderRadius: '6px' }}>
+                  <div style={{ fontWeight: 800, color: '#38bdf8' }}>GK</div>
+                  <div>{previewGk}</div>
+                </div>
+                <div style={{ background: 'var(--card-bg)', padding: '8px', borderRadius: '6px' }}>
+                  <div style={{ fontWeight: 800, color: '#4ade80' }}>DEF</div>
+                  <div>{previewDef}</div>
+                </div>
+                <div style={{ background: 'var(--card-bg)', padding: '8px', borderRadius: '6px' }}>
+                  <div style={{ fontWeight: 800, color: '#facc15' }}>MID</div>
+                  <div>{previewMid}</div>
+                </div>
+                <div style={{ background: 'var(--card-bg)', padding: '8px', borderRadius: '6px' }}>
+                  <div style={{ fontWeight: 800, color: '#f87171' }}>ATT</div>
+                  <div>{previewAtt}</div>
+                </div>
+                <div style={{ background: 'var(--card-bg)', padding: '8px', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
+                  <div style={{ fontWeight: 800, color: '#ffffff' }}>Total</div>
+                  <div style={{ fontWeight: 800 }}>{previewTotal}</div>
+                </div>
+              </div>
+              {removedTotal > 0 && (
+                <div style={{ marginTop: '8px', color: 'var(--accent-red)', fontSize: '0.78rem' }}>
+                  ⚠️ {removedTotal} lowest-rated player(s) will be pruned from dataset.
+                </div>
+              )}
+            </div>
+
+            <button
+              type="submit"
+              className="btn btn-primary"
+              style={{ width: '100%' }}
+              disabled={scaleLoading}
+            >
+              {scaleLoading ? 'Scaling Dataset & Teams...' : `Scale Dataset & Teams to ${nTeams}`}
+            </button>
+          </form>
+
+
+          <hr style={{ borderColor: 'var(--border-color)', margin: '20px 0' }} />
+
           <h3 style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--accent-red)', marginBottom: '8px' }}>Danger Zone — Room {activeRoom}</h3>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '10px' }}>
             Reset sales, captains, and unsold statuses in this room only. Audit and transaction history is preserved for safety.
@@ -244,7 +379,110 @@ export default function Settings() {
         </div>
       </div>
 
+      {/* Removed / Pruned Players Card */}
       <div className="glass-card" style={{ marginTop: '24px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', alignItems: 'center', flexWrap: 'wrap', marginBottom: '16px' }}>
+          <div>
+            <h2 style={{ fontSize: '1.25rem', fontWeight: 800, margin: 0, color: '#ffffff' }}>
+              🚫 Room {activeRoom} Pruned / Removed Players ({removedPlayers.length})
+            </h2>
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.84rem', margin: '4px 0 0' }}>
+              List of lowest-rated players removed during dataset scaling to maintain room balance.
+            </p>
+          </div>
+
+          <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+            {removedPlayers.length > 0 && (
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => api.downloadRemovedPlayersExcel().catch((err) => setErrorMsg(err.message))}
+              >
+                📥 Export Removed Players Excel
+              </button>
+            )}
+            <button type="button" className="btn btn-secondary" onClick={loadRemovedPlayers}>
+              🔄 Refresh List
+            </button>
+          </div>
+        </div>
+
+        {removedPlayers.length > 0 && (
+          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center', marginBottom: '16px' }}>
+            <input
+              type="text"
+              className="input-field"
+              placeholder="🔍 Search removed player, code, club, nationality..."
+              value={removedSearch}
+              onChange={(e) => setRemovedSearch(e.target.value)}
+              style={{ maxWidth: '320px', flex: 1 }}
+            />
+            <div style={{ display: 'flex', gap: '6px' }}>
+              {['ALL', 'GK', 'DEF', 'MID', 'ATT'].map((pos) => (
+                <button
+                  key={pos}
+                  type="button"
+                  className={`btn ${removedPosFilter === pos ? 'btn-primary' : 'btn-secondary'}`}
+                  style={{ padding: '6px 12px', fontSize: '0.8rem' }}
+                  onClick={() => setRemovedPosFilter(pos)}
+                >
+                  {pos}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div style={{ overflowX: 'auto', maxHeight: '420px', overflowY: 'auto' }}>
+          <table className="squad-table" style={{ minWidth: '850px' }}>
+            <thead>
+              <tr>
+                <th>Code</th>
+                <th>Name</th>
+                <th>Pos</th>
+                <th>Total Score</th>
+                <th>P1</th>
+                <th>P2</th>
+                <th>P3</th>
+                <th>Base Price</th>
+                <th>Nationality</th>
+                <th>Club</th>
+              </tr>
+            </thead>
+            <tbody>
+              {removedLoading ? (
+                <tr><td colSpan="10">Loading removed players list...</td></tr>
+              ) : removedPlayers.length === 0 ? (
+                <tr><td colSpan="10">No players have been removed yet. (Room dataset is unscaled with default 20 teams / 152 players).</td></tr>
+              ) : filteredRemovedPlayers.length === 0 ? (
+                <tr><td colSpan="10">No removed players match your search filter.</td></tr>
+              ) : (
+                filteredRemovedPlayers.map((p, idx) => (
+                  <tr key={idx}>
+                    <td><code>{p.player_code}</code></td>
+                    <td><strong>{p.name}</strong></td>
+                    <td>
+                      <span className={`badge badge-${p.position.toLowerCase()}`}>
+                        {p.position}
+                      </span>
+                    </td>
+                    <td><strong style={{ color: 'var(--accent-yellow)' }}>{p.score}</strong></td>
+                    <td>{p.p1}</td>
+                    <td>{p.p2}</td>
+                    <td>{p.p3}</td>
+                    <td>€{p.base_price.toFixed(2)}M</td>
+                    <td>{p.nationality || '—'}</td>
+                    <td>{p.club || '—'}</td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="glass-card" style={{ marginTop: '24px' }}>
+
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', alignItems: 'center', marginBottom: '14px' }}>
           <div>
             <h2 style={{ fontSize: '1.25rem', fontWeight: 800, margin: 0, color: '#ffffff' }}>📜 Room {activeRoom} Audit Log</h2>

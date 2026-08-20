@@ -136,3 +136,29 @@ def generate_audit_excel(db: Session, room_id: int) -> bytes:
         ])
     _style_sheet(legacy)
     return _save(workbook)
+
+
+def generate_removed_players_excel(removed_players: list) -> bytes:
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "Removed Players"
+    sheet.append([
+        "Player Code", "Name", "Position", "Score", "P1", "P2", "P3",
+        "Base Price (€M)", "Nationality", "Club",
+    ])
+    for p in removed_players:
+        sheet.append([
+            p.get("player_code", ""),
+            p.get("name", ""),
+            p.get("position", ""),
+            p.get("score", 0),
+            p.get("p1", 0),
+            p.get("p2", 0),
+            p.get("p3", 0),
+            p.get("base_price", 1.0),
+            p.get("nationality", "") or "",
+            p.get("club", "") or "",
+        ])
+    _style_sheet(sheet)
+    return _save(workbook)
+

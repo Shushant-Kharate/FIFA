@@ -120,6 +120,37 @@ class ImportResultSchema(BaseModel):
     errors: List[str] = Field(default_factory=list)
 
 
+class RemovedPlayerSchema(BaseModel):
+    player_code: str
+    name: str
+    position: str
+    score: int
+    p1: int
+    p2: int
+    p3: int
+    base_price: float
+    nationality: Optional[str] = None
+    club: Optional[str] = None
+
+
+class ScaleDatasetRequest(BaseModel):
+    participating_teams: int = Field(..., ge=1, le=20)
+
+
+class ScaleDatasetResponseSchema(BaseModel):
+    success: bool
+    message: str
+    participating_teams: int
+    player_count: int
+    gk_count: int
+    def_count: int
+    mid_count: int
+    att_count: int
+    removed_players_count: int
+    removed_players: List[RemovedPlayerSchema] = Field(default_factory=list)
+
+
+
 class LoginRequest(BaseModel):
     username: str
     password: str
@@ -135,3 +166,4 @@ class LoginResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     user: AuthUserSchema
+

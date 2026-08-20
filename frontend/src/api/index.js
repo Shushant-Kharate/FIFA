@@ -148,4 +148,14 @@ export const api = {
   downloadResultsExcel: () => api.downloadFile("/admin/export-results", `fifa_room_${getActiveRoom()}_ranked_results.xlsx`),
   downloadAuditExcel: () => api.downloadFile("/admin/export-audit-log", `fifa_room_${getActiveRoom()}_audit_log.xlsx`),
   resetRoom: () => fetchApi("/admin/reset", { method: "POST" }),
+  scaleDataset: (participatingTeams) =>
+    fetchApi("/admin/scale-dataset", {
+      method: "POST",
+      body: JSON.stringify({ participating_teams: parseInt(participatingTeams, 10) }),
+    }),
+  getRemovedPlayers: () => fetchApi("/admin/removed-players"),
+  downloadRemovedPlayersExcel: () =>
+    api.downloadFile("/admin/export-removed-players", `fifa_room_${getActiveRoom()}_removed_players.xlsx`),
 };
+
+

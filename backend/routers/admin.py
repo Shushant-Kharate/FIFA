@@ -8,9 +8,10 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 from database import get_db
 from models import AuditLog, Setting, Player, Team, Transaction
-from schemas import AuditLogSchema, ImportResultSchema, SettingSchema
+from schemas import AuditLogSchema, ImportResultSchema, SettingSchema, ScaleDatasetRequest, ScaleDatasetResponseSchema, RemovedPlayerSchema
 from services.excel_import import process_excel_import, generate_sample_excel
-from services.excel_export import generate_audit_excel, generate_results_excel
+from services.excel_export import generate_audit_excel, generate_results_excel, generate_removed_players_excel
+
 from services.audit_service import add_audit_log
 from auth import CurrentUser, get_active_room_id, get_current_user, require_super_admin
 
@@ -22,7 +23,13 @@ POSITION_SETTING_KEYS = {
     "required_mid",
     "required_att",
 }
-ALLOWED_SETTING_KEYS = POSITION_SETTING_KEYS | {"starting_budget", "auction_status"}
+ALLOWED_SETTING_KEYS = POSITION_SETTING_KEYS | {"starting_budget", "auction_status", "participating_teams"}
+BASE_POS_COUNTS = {
+    "GK": 17,
+    "DEF": 59,
+    "MID": 38,
+    "ATT": 38,
+}
 
 @router.post("/api/admin/import", response_model=ImportResultSchema)
 async def import_excel_file(
@@ -197,7 +204,158 @@ def reset_room_auction(db: Session = Depends(get_db), room_id: int = Depends(get
         "transactions_preserved": transaction_count,
     }
 
+
+@router.post("/api/admin/scale-dataset", response_model=ScaleDatasetResponseSchema)
+def scale_dataset_for_teams(
+    req: ScaleDatasetRequest,
+    db: Session = Depends(get_db),
+    room_id: int = Depends(get_active_room_id),
+    user: CurrentUser = Depends(get_current_user),
+):
+    sold_count = db.query(Player).filter(Player.room_id == room_id, Player.status == "SOLD").count()
+    if sold_count > 0:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot scale dataset after auction has started. {sold_count} player(s) are already sold in Room {room_id}. Please reset the room first."
+        )
+
+    n_teams = req.participating_teams
+    removed_count = 0
+    removed_players_list = []
+
+    # For each position, calculate target count using standard half-up rounding
+    for pos, base_count in BASE_POS_COUNTS.items():
+        target_count = int(math.floor(((base_count * n_teams) / 20.0) + 0.5))
+
+        pos_players = (
+            db.query(Player)
+            .filter(Player.room_id == room_id, Player.position == pos)
+            .order_by(Player.score.asc(), Player.player_code.asc())
+            .all()
+        )
+
+        current_count = len(pos_players)
+        if current_count > target_count:
+            to_remove_count = current_count - target_count
+            players_to_delete = pos_players[:to_remove_count]
+            
+            for p in players_to_delete:
+                removed_players_list.append({
+                    "player_code": p.player_code,
+                    "name": p.name,
+                    "position": p.position,
+                    "score": p.score,
+                    "p1": p.p1,
+                    "p2": p.p2,
+                    "p3": p.p3,
+                    "base_price": p.base_price,
+                    "nationality": p.nationality,
+                    "club": p.club,
+                })
+
+            delete_ids = [p.id for p in players_to_delete]
+
+            db.query(Transaction).filter(Transaction.room_id == room_id, Transaction.player_id.in_(delete_ids)).delete(synchronize_session=False)
+            db.query(Player).filter(Player.id.in_(delete_ids)).delete(synchronize_session=False)
+            removed_count += len(delete_ids)
+
+    # Adjust teams count in room to n_teams
+    surplus_teams = db.query(Team).filter(Team.room_id == room_id, Team.team_number > n_teams).all()
+    if surplus_teams:
+        surplus_team_ids = [t.id for t in surplus_teams]
+        db.query(Transaction).filter(Transaction.room_id == room_id, Transaction.team_id.in_(surplus_team_ids)).delete(synchronize_session=False)
+        db.query(Team).filter(Team.room_id == room_id, Team.id.in_(surplus_team_ids)).delete(synchronize_session=False)
+
+    existing_team_numbers = {t.team_number for t in db.query(Team).filter(Team.room_id == room_id).all()}
+    budget_setting = db.query(Setting).filter(Setting.room_id == room_id, Setting.key == "starting_budget").first()
+    starting_budget = float(budget_setting.value) if budget_setting else 700.0
+
+    for t_num in range(1, n_teams + 1):
+        if t_num not in existing_team_numbers:
+            db.add(Team(room_id=room_id, team_number=t_num, starting_budget=starting_budget))
+
+    setting = db.query(Setting).filter(Setting.room_id == room_id, Setting.key == "participating_teams").first()
+    if setting:
+        setting.value = str(n_teams)
+    else:
+        db.add(Setting(room_id=room_id, key="participating_teams", value=str(n_teams)))
+
+    gk_c = db.query(Player).filter(Player.room_id == room_id, Player.position == "GK").count()
+    def_c = db.query(Player).filter(Player.room_id == room_id, Player.position == "DEF").count()
+    mid_c = db.query(Player).filter(Player.room_id == room_id, Player.position == "MID").count()
+    att_c = db.query(Player).filter(Player.room_id == room_id, Player.position == "ATT").count()
+    total_players = gk_c + def_c + mid_c + att_c
+
+    add_audit_log(
+        db, room_id, "DATASET_SCALED", user.username,
+        f"Scaled dataset and team count to {n_teams} teams in Room {room_id}. Removed {removed_count} lowest-rated player(s). Remaining: {total_players} players.",
+        details={
+            "participating_teams": n_teams,
+            "removed_count": removed_count,
+            "total_players": total_players,
+            "removed_players": removed_players_list,
+        }
+    )
+    db.commit()
+
+    return ScaleDatasetResponseSchema(
+        success=True,
+        message=f"Successfully scaled room dataset to {n_teams} teams ({total_players} players remaining).",
+        participating_teams=n_teams,
+        player_count=total_players,
+        gk_count=gk_c,
+        def_count=def_c,
+        mid_count=mid_c,
+        att_count=att_c,
+        removed_players_count=removed_count,
+        removed_players=removed_players_list,
+    )
+
+
+@router.get("/api/admin/removed-players", response_model=List[RemovedPlayerSchema])
+def get_removed_players(
+    db: Session = Depends(get_db),
+    room_id: int = Depends(get_active_room_id),
+):
+    latest_log = (
+        db.query(AuditLog)
+        .filter(AuditLog.room_id == room_id, AuditLog.action == "DATASET_SCALED")
+        .order_by(AuditLog.timestamp.desc(), AuditLog.id.desc())
+        .first()
+    )
+    if not latest_log or not latest_log.details_json:
+        return []
+    try:
+        data = json.loads(latest_log.details_json)
+        return data.get("removed_players", [])
+    except Exception:
+        return []
+
+
+@router.get("/api/admin/export-removed-players")
+def export_removed_players_excel(
+    db: Session = Depends(get_db),
+    room_id: int = Depends(get_active_room_id),
+    user: CurrentUser = Depends(get_current_user),
+):
+    add_audit_log(
+        db, room_id, "REMOVED_PLAYERS_EXPORTED", user.username,
+        f"Downloaded list of pruned/removed players for Room {room_id}",
+    )
+    db.commit()
+
+    removed_players = get_removed_players(db=db, room_id=room_id)
+    excel_bytes = generate_removed_players_excel(removed_players)
+    return StreamingResponse(
+        io.BytesIO(excel_bytes),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename=fifa_room_{room_id}_removed_players.xlsx"}
+    )
+
+
+
 @router.get("/api/settings", response_model=Dict[str, str])
+
 def get_settings(db: Session = Depends(get_db), room_id: int = Depends(get_active_room_id)):
     settings = db.query(Setting).filter(Setting.room_id == room_id).all()
     return {s.key: s.value for s in settings}
