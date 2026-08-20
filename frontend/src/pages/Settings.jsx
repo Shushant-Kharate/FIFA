@@ -137,6 +137,14 @@ export default function Settings() {
     }
   };
 
+  const nTeams = Math.max(1, Math.min(20, parseInt(participatingTeams, 10) || 20));
+  const previewGk = Math.round((17 * nTeams) / 20);
+  const previewDef = Math.round((59 * nTeams) / 20);
+  const previewMid = Math.round((38 * nTeams) / 20);
+  const previewAtt = Math.round((38 * nTeams) / 20);
+  const previewTotal = previewGk + previewDef + previewMid + previewAtt;
+  const removedTotal = 152 - previewTotal;
+
   const filteredRemovedPlayers = removedPlayers.filter((p) => {
     const q = removedSearch.trim().toLowerCase();
     const matchesSearch =
@@ -148,6 +156,7 @@ export default function Settings() {
     const matchesPos = removedPosFilter === 'ALL' || p.position === removedPosFilter;
     return matchesSearch && matchesPos;
   });
+
 
   return (
     <div>
